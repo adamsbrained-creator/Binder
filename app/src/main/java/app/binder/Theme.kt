@@ -14,10 +14,38 @@ import androidx.compose.ui.text.font.FontWeight
 
 val Coral = Color(0xFFF46C4E)
 
-// Outfit for UI. For the book-title look from the mockups, drop newsreader_regular.ttf into
-// res/font and change this line to: FontFamily(Font(R.font.newsreader_regular))
+// ───────── fonts: Outfit is the standard one ─────────
+
 val Outfit = FontFamily(Font(R.font.outfit_regular, FontWeight.Normal), Font(R.font.outfit_bold, FontWeight.Bold))
-val Serif: FontFamily = FontFamily.Serif
+private val Lora = FontFamily(Font(R.font.lora_regular, FontWeight.Normal), Font(R.font.lora_bold, FontWeight.Bold))
+private val Crimson = FontFamily(Font(R.font.crimsonpro_regular, FontWeight.Normal), Font(R.font.crimsonpro_bold, FontWeight.Bold))
+private val InstSerif = FontFamily(Font(R.font.instrumentserif_regular, FontWeight.Normal))
+private val InstSans = FontFamily(Font(R.font.instrumentsans_regular, FontWeight.Normal), Font(R.font.instrumentsans_bold, FontWeight.Bold))
+private val WorkSans = FontFamily(Font(R.font.worksans_regular, FontWeight.Normal), Font(R.font.worksans_bold, FontWeight.Bold))
+
+fun FontChoice.body(): FontFamily = when (this) {
+    FontChoice.INSTSANS -> InstSans
+    FontChoice.WORKSANS -> WorkSans
+    else -> Outfit
+}
+
+fun FontChoice.title(): FontFamily = when (this) {
+    FontChoice.OUTFIT -> Outfit
+    FontChoice.LORA -> Lora
+    FontChoice.CRIMSON -> Crimson
+    FontChoice.INSTRUMENT -> InstSerif
+    FontChoice.INSTSANS -> InstSans
+    FontChoice.WORKSANS -> WorkSans
+}
+
+val LocalOpts = staticCompositionLocalOf { Opts() }
+
+val BodyFont: FontFamily
+    @Composable get() = LocalOpts.current.font.body()
+val TitleFont: FontFamily
+    @Composable get() = LocalOpts.current.font.title()
+
+// ───────── colours ─────────
 
 @Immutable
 class Pal(
@@ -42,6 +70,8 @@ fun BinderTheme(dark: Boolean, content: @Composable () -> Unit) {
     }
 }
 
+// ───────── cover colours & pictures ─────────
+
 class Cover(val top: Color, val bottom: Color, val ink: Color)
 
 val Covers = listOf(
@@ -53,6 +83,10 @@ val Covers = listOf(
     Cover(Color(0xFFEEEEEE), Color(0xFFCDCDCD), Color(0xFF111111)),
 )
 
+/** A cover: a colour, and optionally a picture on top of it. */
+class Art(val c: Cover, val img: String? = null)
+
 fun coverFor(key: String): Cover = Covers[(key.hashCode() and 0x7fffffff) % Covers.size]
 fun Item.look(): Cover = if (cover in Covers.indices) Covers[cover] else coverFor(title)
-fun BinderList.stack(): List<Cover> = (items.take(3).map { it.look() } + kind.stack.map { Covers[it] }).take(3)
+fun Item.art(): Art = Art(look(), images.firstOrNull())
+fun BinderList.stack(): List<Art> = (items.take(3).map { it.art() } + kind.stack.map { Art(Covers[it]) }).take(3)

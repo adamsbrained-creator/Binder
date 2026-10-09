@@ -29,4 +29,9 @@ object Ic {
     val Dots = icon("dots", "M12 6h0.01M12 12h0.01M12 18h0.01")
     val List = icon("list", "M9 6h11M9 12h11M9 18h11M4 6h0.01M4 12h0.01M4 18h0.01")
     val Check = icon("check", "M5 12l5 5L20 7")
+    val Menu = icon("menu", "M4 6h16M4 12h16M4 18h16")
+    val Grid = icon("grid", "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z")
+    val Handle = icon("handle", "M5 9h14M5 15h14")
+    val Close = icon("close", "M6 6l12 12M18 6L6 18")
+    val Photo = icon("photo", "M4 5h16v14H4z", "M4 16l5-5 4 4 3-3 4 4")
 }
