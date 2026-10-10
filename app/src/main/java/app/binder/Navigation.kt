@@ -63,14 +63,13 @@ fun AppHeader(vm: BinderViewModel) {
     val more = { vm.nav.push(Route.More) }
     val menu = { vm.drawer = true }
     when (h) {
-        HeaderStyle.WORDMARK -> Row(
-            Modifier.fillMaxWidth().height(60.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Txt(name, 28, weight = FontWeight.Medium, modifier = Modifier.weight(1f), ls = (-0.03).em)
-            CircleBtn(Ic.Search, "Search") { search() }
-            CircleBtn(Ic.Dots, "More") { more() }
+        HeaderStyle.WORDMARK -> Box(Modifier.fillMaxWidth().height(68.dp)) {
+            Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Menu, "Menu") { vm.menu = true } }
+            Txt(
+                name, 32, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.03).em,
+                maxLines = 1,
+            )
+            Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Search, "Search") { search() } }
         }
         HeaderStyle.CIRCLES -> Box(Modifier.fillMaxWidth().height(60.dp)) {
             Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Search, "Search") { search() } }
@@ -101,7 +100,7 @@ fun AppHeader(vm: BinderViewModel) {
 @Composable
 fun TopTabs(vm: BinderViewModel, cur: Route) {
     if (vm.opts.nav != NavStyle.TABS) return
-    val tabs = listOf<Pair<Route, String>>(Route.Home to "Lists", Route.Search to "Search", Route.More to "More")
+    val tabs = listOf<Pair<Route, String>>(Route.Home to vm.opts.lists, Route.Search to "Search", Route.More to "More")
     Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
         tabs.forEach { (r, label) ->
             val on = r == cur
@@ -145,7 +144,7 @@ private fun NavPill(cur: Route, vm: BinderViewModel, mode: Int) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Icon(t.icon, t.label, tint = if (on) P.onPrimary else P.mute, modifier = Modifier.size(20.dp))
-                if (label) Txt(t.label, 14, if (on) P.onPrimary else P.mute)
+                if (label) Txt(if (t.route == Route.Home) vm.opts.lists else t.label, 14, if (on) P.onPrimary else P.mute)
             }
         }
     }
@@ -192,7 +191,7 @@ fun BoxScope.NavBar(vm: BinderViewModel, cur: Route) {
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Icon(t.icon, t.label, tint = if (on) P.onPrimary else P.mute, modifier = Modifier.size(20.dp))
-                        Txt(t.label, 11, if (on) P.onPrimary else P.mute)
+                        Txt(if (t.route == Route.Home) vm.opts.lists else t.label, 11, if (on) P.onPrimary else P.mute)
                     }
                 }
             }
@@ -304,12 +303,11 @@ fun BoxScope.Drawer(vm: BinderViewModel, cur: Route) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                LogoMark(36.dp)
                 Txt(vm.opts.appName, 24, weight = FontWeight.Medium, ls = (-0.02).em)
             }
-            DrawerItem(Ic.List, "Lists", cur == Route.Home) { vm.drawer = false; vm.nav.root(Route.Home) }
+            DrawerItem(Ic.List, vm.opts.lists, cur == Route.Home) { vm.drawer = false; vm.nav.root(Route.Home) }
             DrawerItem(Ic.Search, "Search", cur == Route.Search) { vm.drawer = false; vm.nav.root(Route.Search) }
-            DrawerItem(Ic.Plus, "New list", false) { vm.drawer = false; vm.nav.push(Route.NewList) }
+            DrawerItem(Ic.Plus, "New ${vm.opts.listLower}", false) { vm.drawer = false; vm.nav.push(Route.NewList) }
             DrawerItem(Ic.Dots, "More", cur == Route.More) { vm.drawer = false; vm.nav.root(Route.More) }
         }
     }

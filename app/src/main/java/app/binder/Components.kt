@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -57,10 +59,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -156,9 +162,9 @@ fun TopBar(
 @Composable
 fun CircleBtn(icon: ImageVector, desc: String, bg: Color = P.surface, tint: Color = P.fg, onClick: () -> Unit) {
     Box(
-        Modifier.size(44.dp).clip(CircleShape).background(bg).clickable(onClick = onClick),
+        Modifier.size(48.dp).clip(CircleShape).background(bg).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(20.dp)) }
+    ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(22.dp)) }
 }
 
 @Composable
@@ -438,48 +444,15 @@ fun ArtBox(art: Art, modifier: Modifier = Modifier, radius: Dp = 10.dp, px: Int 
 @Composable
 fun CoverView(
     title: String, art: Art, modifier: Modifier = Modifier, size: Int = 13, px: Int = 500, showTitle: Boolean = true,
+    square: Boolean = false, content: @Composable BoxScope.() -> Unit = {},
 ) {
     val shape = RoundedCornerShape(12.dp)
-    Box(modifier.aspectRatio(2f / 3f).clip(shape).border(1.dp, P.line, shape)) {
+    Box(modifier.aspectRatio(if (square) 1f else 2f / 3f).clip(shape).border(1.dp, P.line, shape)) {
         ArtBox(art, Modifier.fillMaxSize(), 12.dp, px)
         if (art.img == null && showTitle) {
             Txt(title, size, art.c.ink, Modifier.padding(8.dp), font = TitleFont, maxLines = 4, lh = (size + 2).sp)
         }
-    }
-}
-
-/** The little fanned-out stack of three cards used as a list's icon. */
-@Composable
-fun CardStack(arts: List<Art>, scale: Float = 1f, modifier: Modifier = Modifier) {
-    val rot = listOf(-9f, 2f, 10f)
-    Box(modifier.height((60 * scale).dp).width((100 * scale).dp)) {
-        arts.take(3).forEachIndexed { i, a ->
-            ArtBox(
-                a,
-                Modifier.offset(x = (i * 26 * scale).dp).size((38 * scale).dp, (54 * scale).dp)
-                    .rotate(rot[i]).border(2.dp, P.surface, RoundedCornerShape(8.dp)),
-                8.dp, 200,
-            )
-        }
-    }
-}
-
-@Composable
-fun Tile(
-    title: String, sub: String, arts: List<Art>, selected: Boolean,
-    modifier: Modifier = Modifier, onHold: (() -> Unit)? = null, onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(24.dp)
-    Box(
-        modifier.fillMaxWidth().height(158.dp).clip(shape).background(P.surface)
-            .border(2.dp, if (selected) Coral else Color.Transparent, shape)
-            .tapHold(onClick, onHold).padding(14.dp)
-    ) {
-        CardStack(arts, 1f, Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 4.dp))
-        Column(Modifier.align(Alignment.BottomStart)) {
-            Txt(title, 15, weight = FontWeight.Medium, maxLines = 2)
-            Txt(sub, 12, P.mute, Modifier.padding(top = 2.dp), maxLines = 1)
-        }
+        content()
     }
 }
 
@@ -523,29 +496,115 @@ fun ColumnScope.EmptyBlock(title: String, body: String, button: String? = null, 
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CardStack(listOf(Art(Covers[0]), Art(Covers[3]), Art(Covers[1])), 1.3f, Modifier.padding(bottom = 28.dp))
         Txt(title, 24, font = TitleFont, align = TextAlign.Center)
         Txt(body, 14, P.mute, Modifier.padding(top = 6.dp, bottom = 20.dp), align = TextAlign.Center)
         if (button != null) Pill(button, filled = true, onClick = onClick)
     }
 }
 
-/** The app's mark: a coral card behind a dark one. */
+// ───────── 1.0 pieces ─────────
+
+/** Black / white round button (the menu button, and the + that pops out beside it). */
 @Composable
-fun LogoMark(size: Dp = 40.dp) {
-    Box(Modifier.size(size)) {
-        Box(
-            Modifier.align(Alignment.TopStart).padding(start = size * 0.04f, top = size * 0.08f)
-                .size(size * 0.58f, size * 0.74f).rotate(-10f)
-                .clip(RoundedCornerShape(size * 0.14f)).background(Coral)
-        )
-        Box(
-            Modifier.align(Alignment.BottomEnd).padding(end = size * 0.04f, bottom = size * 0.04f)
-                .size(size * 0.62f, size * 0.78f).rotate(6f)
-                .clip(RoundedCornerShape(size * 0.15f)).background(P.fg).padding(size * 0.07f)
-        ) {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.1f)).background(P.bg))
+fun RoundBtn(icon: ImageVector, desc: String, size: Dp = 58.dp, modifier: Modifier = Modifier, onHold: (() -> Unit)? = null, onClick: () -> Unit) {
+    Box(
+        modifier.size(size).clip(CircleShape).background(P.primary).tapHold(onClick, onHold),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, desc, tint = P.onPrimary, modifier = Modifier.size(24.dp)) }
+}
+
+/** On / off switch. */
+@Composable
+fun Toggle(on: Boolean, onChange: (Boolean) -> Unit) {
+    Box(
+        Modifier.size(width = 52.dp, height = 32.dp).clip(CircleShape)
+            .background(if (on) P.primary else P.line).clickable { onChange(!on) }.padding(4.dp),
+        contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
+    ) { Box(Modifier.size(24.dp).clip(CircleShape).background(if (on) P.onPrimary else P.bg)) }
+}
+
+/** A round progress ring with the percentage in the middle. */
+@Composable
+fun ProgressRing(frac: Float, size: Dp = 44.dp) {
+    val track = P.line
+    val f = frac.coerceIn(0f, 1f)
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = 4.dp.toPx()
+            val inset = w / 2f
+            val box = androidx.compose.ui.geometry.Size(this.size.width - w, this.size.height - w)
+            val tl = androidx.compose.ui.geometry.Offset(inset, inset)
+            drawArc(track, 0f, 360f, false, tl, box, style = Stroke(w))
+            if (f > 0f) drawArc(Coral, -90f, 360f * f, false, tl, box, style = Stroke(w, cap = StrokeCap.Round))
         }
+        Txt("${(f * 100).roundToInt()}", 12, P.fg, align = TextAlign.Center)
+    }
+}
+
+/** Chips where several can be on at once. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun MultiChips(options: List<String>, on: Set<Int>, modifier: Modifier = Modifier, onToggle: (Int) -> Unit) {
+    FlowRow(
+        modifier.padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEachIndexed { i, o ->
+            val sel = i in on
+            Box(
+                Modifier.clip(CircleShape).background(if (sel) P.primary else P.surface)
+                    .clickable { onToggle(i) }.padding(horizontal = 14.dp, vertical = 9.dp)
+            ) { Txt(o, 14, if (sel) P.onPrimary else P.fg) }
+        }
+    }
+}
+
+/** A dashed rounded outline. */
+@Composable
+fun Modifier.dashedBorder(radius: Dp = 12.dp): Modifier {
+    val line = P.mute.copy(alpha = 0.5f)
+    return this.clip(RoundedCornerShape(radius)).drawBehind {
+        drawRoundRect(
+            line, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()),
+            style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))),
+        )
+    }
+}
+
+/** The dashed "+" slot that shows where something will go. */
+@Composable
+fun DashedSlot(modifier: Modifier = Modifier, radius: Dp = 12.dp, onClick: () -> Unit) {
+    Box(
+        modifier.dashedBorder(radius).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(Ic.Plus, "Add", tint = P.mute, modifier = Modifier.size(24.dp)) }
+}
+
+/** Header for inner pages: back on the left, title and a small line under it in the middle, buttons on the right. */
+@Composable
+fun Header2(
+    title: String,
+    sub: String = "",
+    onBack: (() -> Unit)? = null,
+    right: @Composable RowScope.() -> Unit = {},
+) {
+    Box(Modifier.fillMaxWidth().height(64.dp)) {
+        Box(Modifier.align(Alignment.CenterStart)) {
+            if (onBack != null) CircleBtn(Ic.Back, "Back") { onBack() }
+        }
+        Column(
+            Modifier.align(Alignment.Center).fillMaxWidth(0.4f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Txt(title, 22, weight = FontWeight.Medium, maxLines = 1, ls = (-0.02).em, align = TextAlign.Center)
+            if (sub.isNotEmpty()) Txt(sub, 12, P.mute, maxLines = 1, align = TextAlign.Center)
+        }
+        Row(
+            Modifier.align(Alignment.CenterEnd),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            content = right,
+        )
     }
 }
 

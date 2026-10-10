@@ -10,6 +10,11 @@ enum class Sort(val label: String) {
     MANUAL("Manual"), NEWEST("Newest"), TITLE("A–Z"), RATING("Rating")
 }
 
+/** Where details can be fetched from. Only Apple Music is wired up in 1.0.0. */
+enum class Source(val label: String, val openLabel: String) {
+    APPLE("Apple Music", "Open in Apple Music"),
+}
+
 /** The kinds of list you can start from. Add a new one here and it shows up everywhere. */
 enum class Kind(
     val label: String,
@@ -19,20 +24,24 @@ enum class Kind(
     val subLabel: String,
     val stages: List<String>,
     val hasRating: Boolean,
-    val stack: List<Int>, // cover colours shown on an empty list's tile
+    val square: Boolean = false, // album and game covers are square
+    val source: Source? = null,  // where details come from, if anywhere
 ) {
-    BOOKS("Books", "Title and author", "books", "book", "Author", listOf("To read", "Reading", "Done"), true, listOf(0, 3, 1)),
-    MOVIES("Movies", "Title, year, rating", "movies", "movie", "Year", listOf("To watch", "Watching", "Watched"), true, listOf(4, 1, 5)),
-    SERIES("Series", "Title, seasons, rating", "series", "series", "Seasons", listOf("To watch", "Watching", "Watched"), true, listOf(1, 4, 3)),
-    ALBUMS("Albums", "Artist, year, rating", "albums", "album", "Artist", listOf("To listen", "Listening", "Heard"), true, listOf(2, 3, 0)),
-    GAMES("Games", "Title, platform, rating", "games", "game", "Platform", listOf("To play", "Playing", "Played"), true, listOf(4, 0, 2)),
-    PLACES("Places", "Place, city, rating", "places", "place", "City", listOf("Want to go", "Planned", "Visited"), true, listOf(2, 3, 5)),
-    ANYTHING("Anything", "Your own collection", "things", "thing", "Details", listOf("Idea", "In progress", "Done"), true, listOf(5, 1, 0)),
-    CHECKLIST("Checklist", "Items and done", "items", "item", "", listOf("To do", "Done"), false, listOf(5, 3, 4));
+    BOOKS("Books", "Title, author", "books", "book", "Author", listOf("To read", "Reading", "Done"), true),
+    MOVIES("Movies", "Title, year", "movies", "movie", "Year", listOf("To watch", "Watching", "Watched"), true),
+    SERIES("Series", "Seasons", "series", "series", "Seasons", listOf("To watch", "Watching", "Watched"), true),
+    ALBUMS("Albums", "Artist, year", "albums", "album", "Artist", listOf("To listen", "Listening", "Heard"), true, square = true, source = Source.APPLE),
+    GAMES("Games", "Platform", "games", "game", "Platform", listOf("To play", "Playing", "Played"), true, square = true),
+    PLACES("Places", "City", "places", "place", "City", listOf("Want to go", "Planned", "Visited"), true),
+    ANYTHING("Anything", "Your own", "things", "thing", "Details", listOf("Idea", "In progress", "Done"), true),
+    CHECKLIST("Checklist", "Items, done", "items", "item", "", listOf("To do", "Done"), false);
 
     val isChecklist: Boolean get() = this == CHECKLIST
     val layouts: List<Layout> get() = if (isChecklist) listOf(Layout.LIST, Layout.SECTIONS) else Layout.entries
 }
+
+/** What can be shown under a cover in the grid. */
+enum class Under(val label: String) { TITLE("Title"), RATING("Rating"), ADDED("Added"), PROGRESS("Progress") }
 
 data class Item(
     val id: String = UUID.randomUUID().toString(),
@@ -44,6 +53,14 @@ data class Item(
     val added: Long = System.currentTimeMillis(),
     val cover: Int = -1, // -1 = automatic colour
     val images: List<String> = emptyList(), // file names in files/images, the first one is the cover
+    // filled in when details are fetched (all optional, old files simply have none)
+    val sourceName: String = "",
+    val sourceId: String = "",
+    val sourceUrl: String = "",
+    val year: String = "",
+    val genre: String = "",
+    val description: String = "",
+    val detailsPending: Boolean = false, // saved offline, details still to be fetched
 )
 
 data class BinderList(
@@ -55,6 +72,8 @@ data class BinderList(
     val pinned: Boolean = false,
     val items: List<Item> = emptyList(),
     val created: Long = System.currentTimeMillis(),
+    val columns: Int = 3,                         // 2, 3 or 4 in the grid layout
+    val under: Set<Under> = setOf(Under.TITLE, Under.RATING),
 )
 
 fun BinderList.doneCount(): Int = items.count { it.stage == kind.stages.lastIndex }
@@ -98,6 +117,11 @@ enum class FontChoice(val label: String) {
     INSTRUMENT("Outfit + Instrument Serif"), INSTSANS("Instrument Sans"), WORKSANS("Work Sans")
 }
 
+/** The word used for "lists" everywhere in the app. */
+enum class ListWord(val plural: String, val single: String) {
+    LISTS("Lists", "List"), BINDS("Binds", "Bind"), CATALOGS("Catalogs", "Catalog"), SLEEVES("Sleeves", "Sleeve")
+}
+
 data class Opts(
     val theme: String = "system",
     val appName: String = "binder", // "binder" or "catalog"
@@ -107,4 +131,13 @@ data class Opts(
     val home: HomeStyle = HomeStyle.PINNED,
     val add: AddStyle = AddStyle.SHEET,
     val itemPage: ItemPage = ItemPage.STANDARD,
+    val fetch: Boolean = false,           // fetch details from the internet (off = no network calls at all)
+    val listName: ListWord = ListWord.LISTS,
+    val emptySlots: Boolean = true,       // dashed "+" slots in empty places
 )
+
+/** "Lists" / "list" / "List" / "lists" in the word the person picked. */
+val Opts.lists: String get() = listName.plural
+val Opts.list: String get() = listName.single
+val Opts.listsLower: String get() = listName.plural.lowercase()
+val Opts.listLower: String get() = listName.single.lowercase()

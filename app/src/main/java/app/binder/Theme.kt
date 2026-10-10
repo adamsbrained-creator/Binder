@@ -89,4 +89,3 @@ class Art(val c: Cover, val img: String? = null)
 fun coverFor(key: String): Cover = Covers[(key.hashCode() and 0x7fffffff) % Covers.size]
 fun Item.look(): Cover = if (cover in Covers.indices) Covers[cover] else coverFor(title)
 fun Item.art(): Art = Art(look(), images.firstOrNull())
-fun BinderList.stack(): List<Art> = (items.take(3).map { it.art() } + kind.stack.map { Art(Covers[it]) }).take(3)

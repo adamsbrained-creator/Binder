@@ -3,6 +3,7 @@ package app.binder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,8 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.net.Uri
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,31 +47,43 @@ import java.util.Locale
 // ───────────────────────── New list ─────────────────────────
 
 @Composable
+private fun KindTile(kd: Kind, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Box(
+        modifier.height(92.dp).clip(shape).background(P.surface)
+            .border(2.dp, if (selected) Coral else Color.Transparent, shape)
+            .clickable(onClick = onClick).padding(12.dp)
+    ) {
+        Column(Modifier.align(Alignment.BottomStart)) {
+            Txt(kd.label, 15, weight = FontWeight.Medium, maxLines = 1)
+            Txt(kd.hint, 11, P.mute, Modifier.padding(top = 2.dp), maxLines = 2, lh = 13.sp)
+        }
+    }
+}
+
+@Composable
 fun NewListScreen(vm: BinderViewModel) {
+    val o = vm.opts
     var name by rememberSaveable { mutableStateOf("") }
     var k by rememberSaveable { mutableStateOf(0) }
     val kind = Kind.entries[k]
 
     Screen {
-        TopBar("New list", left = { CircleBtn(Ic.Back, "Back") { vm.nav.pop() } })
+        Header2("New ${o.listLower}", onBack = { vm.nav.pop() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Field("List name", name, Modifier.padding(top = 6.dp)) { name = it }
+            Field("${o.list} name", name, Modifier.padding(top = 6.dp)) { name = it }
             Cap("START FROM")
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Kind.entries.chunked(2).forEach { pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        pair.forEach { kd ->
-                            Tile(kd.label, kd.hint, kd.stack.map { Art(Covers[it]) }, kd == kind, Modifier.weight(1f)) {
-                                k = kd.ordinal
-                            }
-                        }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Kind.entries.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { kd -> KindTile(kd, kd == kind, Modifier.weight(1f)) { k = kd.ordinal } }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
             Spacer(Modifier.height(16.dp))
         }
-        BigButton("Create list", Modifier.navigationBarsPadding().padding(top = 8.dp, bottom = 18.dp)) {
+        BigButton("Create ${o.listLower}", Modifier.navigationBarsPadding().padding(top = 8.dp, bottom = 18.dp)) {
             val id = vm.addList(name.trim().ifBlank { kind.label }, kind)
             vm.nav.replaceTop(Route.Lst(id))
         }
@@ -78,25 +95,23 @@ fun NewListScreen(vm: BinderViewModel) {
 @Composable
 fun SearchScreen(vm: BinderViewModel) {
     var q by rememberSaveable { mutableStateOf("") }
+    val o = vm.opts
     val hits: List<Pair<BinderList, Item>> = if (q.isBlank()) emptyList() else vm.lists.flatMap { l ->
         l.items.filter {
-            it.title.contains(q, true) || it.sub.contains(q, true) || it.note.contains(q, true)
+            it.title.contains(q, true) || it.sub.contains(q, true) || it.note.contains(q, true) || it.genre.contains(q, true)
         }.map { l to it }
     }
-    val pad = navHeight(vm.opts.nav) + 40
+    val pad = navHeight(o.nav) + 40
     Screen(rail = true) {
-        TopBar(
+        Header2(
             "Search",
-            left = {
-                if (vm.nav.stack.size > 1) CircleBtn(Ic.Back, "Back") { vm.nav.pop() }
-                else Spacer(Modifier.width(44.dp))
-            },
+            onBack = if (vm.nav.stack.size > 1) ({ vm.nav.pop() }) else null,
         )
         TopTabs(vm, Route.Search)
-        Field("Search every list", q) { q = it }
+        Field("Search every ${o.listLower}", q) { q = it }
         Spacer(Modifier.height(8.dp))
         if (q.isBlank()) {
-            EmptyBlock("Find anything", "Titles, authors, artists and notes from all your lists.")
+            EmptyBlock("Find anything", "Titles, authors, artists and notes from all your ${o.listsLower}.")
         } else if (hits.isEmpty()) {
             EmptyBlock("No matches", "Nothing found for “$q”.")
         } else {
@@ -107,7 +122,7 @@ fun SearchScreen(vm: BinderViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CoverView(item.title, item.art(), Modifier.width(40.dp), size = 8, px = 150, showTitle = false)
+                        CoverView(item.title, item.art(), Modifier.width(40.dp), size = 8, px = 150, showTitle = false, square = l.kind.square)
                         Column(Modifier.weight(1f)) {
                             Txt(item.title, 16, maxLines = 1)
                             Txt("in ${l.name}", 13, P.mute, maxLines = 1)
@@ -128,6 +143,20 @@ private fun <T> OptionGroup(title: String, all: List<T>, selected: T, label: (T)
 }
 
 @Composable
+private fun SwitchRow(title: String, sub: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Txt(title, 15)
+            Txt(sub, 12, P.mute, Modifier.padding(top = 2.dp))
+        }
+        Toggle(on, onChange)
+    }
+}
+
+@Composable
 fun MoreScreen(vm: BinderViewModel) {
     val o = vm.opts
     var msg by remember { mutableStateOf("") }
@@ -142,18 +171,27 @@ fun MoreScreen(vm: BinderViewModel) {
     }
 
     Screen(rail = true) {
-        TopBar(
-            "",
-            left = {
-                if (vm.nav.stack.size > 1) CircleBtn(Ic.Back, "Back") { vm.nav.pop() }
-                else Spacer(Modifier.width(44.dp))
-            },
-        )
+        Header2("More", onBack = if (vm.nav.stack.size > 1) ({ vm.nav.pop() }) else null)
         TopTabs(vm, Route.More)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                LogoMark(44.dp)
-                Txt("More", 34, font = TitleFont)
+            Cap("DETAILS")
+            SwitchRow("Fetch details automatically", "Only the text you search for is sent.", o.fetch) { v ->
+                vm.change { it.copy(fetch = v) }
+            }
+            Txt(
+                if (o.fetch) "On: in an Albums list, typing a title or pasting an Apple Music link looks up the cover and details."
+                else "Off: Binder makes no internet calls at all.",
+                12, P.mute, Modifier.padding(top = 6.dp),
+            )
+
+            Cap("SOURCES")
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Txt("Albums", 15)
+                    Txt("Apple Music", 15, P.mute)
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(P.line))
+                Txt("Movies, series, games and books are coming later.", 13, P.mute, Modifier.padding(vertical = 12.dp))
             }
 
             Cap("APP NAME")
@@ -161,6 +199,8 @@ fun MoreScreen(vm: BinderViewModel) {
                 vm.change { it.copy(appName = if (i == 1) "catalog" else "binder") }
             }
             Txt("Only changes the name and logo text at the top.", 12, P.mute, Modifier.padding(top = 6.dp))
+
+            OptionGroup("NAME FOR LISTS", ListWord.entries, o.listName, { it.plural }) { v -> vm.change { it.copy(listName = v) } }
 
             Cap("THEME")
             val themes = listOf("system", "light", "dark")
@@ -171,10 +211,15 @@ fun MoreScreen(vm: BinderViewModel) {
             OptionGroup("HOME LAYOUT", HomeStyle.entries, o.home, { it.label }) { v -> vm.change { it.copy(home = v) } }
             OptionGroup("HEADER", HeaderStyle.entries, o.header, { it.label }) { v -> vm.change { it.copy(header = v) } }
             OptionGroup("NAVIGATION", NavStyle.entries, o.nav, { it.label }) { v -> vm.change { it.copy(nav = v) } }
-            OptionGroup("ADDING ITEMS (+ BUTTON)", AddStyle.entries, o.add, { it.label }) { v -> vm.change { it.copy(add = v) } }
-            Txt("Press and hold the + button for the other way.", 12, P.mute, Modifier.padding(top = 6.dp))
+            OptionGroup("ADDING ITEMS", AddStyle.entries, o.add, { it.label }) { v -> vm.change { it.copy(add = v) } }
+            Txt("Tap the menu button to open the menu. Press and hold it to pop out a + for adding.", 12, P.mute, Modifier.padding(top = 6.dp))
             OptionGroup("ITEM PAGE", ItemPage.entries, o.itemPage, { it.label }) { v -> vm.change { it.copy(itemPage = v) } }
             OptionGroup("FONT", FontChoice.entries, o.font, { it.label }) { v -> vm.change { it.copy(font = v) } }
+
+            Cap("EMPTY SLOTS")
+            SwitchRow("Show empty slots", "Dashed “+” where something will go.", o.emptySlots) { v ->
+                vm.change { it.copy(emptySlots = v) }
+            }
 
             Cap("BACKUP")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -189,16 +234,23 @@ fun MoreScreen(vm: BinderViewModel) {
                     ) { Txt("Restore", 16, weight = FontWeight.Medium) }
                 }
             }
-            Txt("A .zip with all your lists, text and pictures.", 12, P.mute, Modifier.padding(top = 6.dp))
+            Txt("A .zip with all your ${o.listsLower}, text and pictures.", 12, P.mute, Modifier.padding(top = 6.dp))
             if (msg.isNotEmpty()) Txt(msg, 13, Coral, Modifier.padding(top = 6.dp))
 
             Cap("ABOUT")
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(16.dp)) {
-                Txt("${o.appName.replaceFirstChar { it.uppercase() }} 0.5", 15, weight = FontWeight.Medium)
-                Txt(
-                    "Everything is kept on this phone: the lists in binder.json and the pictures in a folder next to it. Use Save backup to keep a copy.",
-                    13, P.mute, Modifier.padding(top = 4.dp),
-                )
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface)
+                    .clickable { vm.nav.push(Route.About) }.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Txt("${o.appName.replaceFirstChar { it.uppercase() }} ${BuildConfig.VERSION_NAME}", 15, weight = FontWeight.Medium)
+                    Txt(
+                        "Lists and pictures stay on this phone. Only the text you search for is sent when fetching is on.",
+                        13, P.mute, Modifier.padding(top = 4.dp),
+                    )
+                }
+                Icon(Ic.Chevron, null, tint = P.mute, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.height(navHeight(o.nav).dp + 40.dp))
         }

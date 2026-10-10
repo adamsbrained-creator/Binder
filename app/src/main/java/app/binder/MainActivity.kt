@@ -43,11 +43,12 @@ class MainActivity : ComponentActivity() {
 fun App(vm: BinderViewModel) {
     val nav = vm.nav
     val top = nav.top
-    val overlay = vm.drawer || vm.sheet != null || vm.quick != null
+    val overlay = vm.drawer || vm.menu || vm.sheet != null || vm.quick != null
     BackHandler(enabled = overlay || vm.reorder || top != Route.Home || nav.stack.size > 1) {
         when {
             vm.sheet != null -> vm.sheet = null
             vm.quick != null -> vm.quick = null
+            vm.menu -> vm.menu = false
             vm.drawer -> vm.drawer = false
             vm.reorder -> vm.reorder = false
             else -> nav.back()
@@ -62,6 +63,8 @@ fun App(vm: BinderViewModel) {
                     Route.Search -> SearchScreen(vm)
                     Route.More -> MoreScreen(vm)
                     Route.NewList -> NewListScreen(vm)
+                    Route.About -> AboutScreen(vm)
+                    is Route.Lists -> ListsScreen(vm, r.mode)
                     is Route.Lst -> ListScreen(vm, r.id)
                     is Route.ItemEdit -> ItemScreen(vm, r.listId, r.itemId)
                 }
@@ -72,6 +75,7 @@ fun App(vm: BinderViewModel) {
             val u = vm.undo
             if (vm.reorder) ReorderBar(vm, gap) else if (u != null) UndoBar(vm, u, gap)
             if (vm.drawer) Drawer(vm, top)
+            if (vm.menu) MenuSheet(vm)
             val sh = vm.sheet
             if (sh != null) ActionSheet(vm, sh)
             val q = vm.quick

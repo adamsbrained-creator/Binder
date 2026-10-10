@@ -1,5 +1,7 @@
 package app.binder
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,7 +17,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -58,6 +62,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -120,45 +125,43 @@ fun HomeScreen(vm: BinderViewModel) {
             AppHeader(vm)
             TopTabs(vm, Route.Home)
             if (lists.isEmpty()) {
-                EmptyBlock("No lists yet", "Make one for books, movies, albums or a quick checklist.", "Create a list") {
-                    nav.push(Route.NewList)
-                }
+                EmptyBlock(
+                    "No ${o.listsLower} yet",
+                    "Make one for books, movies, albums or a quick checklist.",
+                    "Create a ${o.listLower}",
+                ) { nav.push(Route.NewList) }
             } else {
                 when (o.home) {
                     HomeStyle.PINNED -> PinnedHome(vm, lists, pad, open, hold)
                     HomeStyle.BENTO -> BentoHome(vm, lists, pad, open, hold)
                     HomeStyle.TILES -> {
-                        HomeTitle(lists.size)
+                        HomeTitle(o.lists, lists.size)
                         Chips(listOf("All", "Media", "Checklists"), filter) { filter = it }
                         TilesHome(shown, pad, open, hold)
                     }
                     HomeStyle.ROWS -> {
-                        HomeTitle(lists.size)
+                        HomeTitle(o.lists, lists.size)
                         Chips(listOf("All", "Media", "Checklists"), filter) { filter = it }
                         RowsHome(vm, shown, pad, open, hold)
                     }
                     HomeStyle.STACKS -> {
-                        HomeTitle(lists.size)
+                        HomeTitle(o.lists, lists.size)
                         Chips(listOf("All", "Media", "Checklists"), filter) { filter = it }
-                        StacksHome(shown, pad, open, hold)
+                        StacksHome(vm, shown, pad, open, hold)
                     }
                 }
             }
         }
         if (!showsPlus(o.nav)) {
-            RoundPlus(
-                60.dp,
-                Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(end = 16.dp, bottom = (navHeight(o.nav) + 18).dp),
-            ) { nav.push(Route.NewList) }
+            MenuFab(vm, bottom = navHeight(o.nav), onAdd = { nav.push(Route.NewList) })
         }
     }
 }
 
 @Composable
-private fun HomeTitle(count: Int) {
+private fun HomeTitle(title: String, count: Int) {
     Row(verticalAlignment = Alignment.Bottom) {
-        Txt("Lists", 34, font = TitleFont)
+        Txt(title, 34, font = TitleFont)
         Txt("$count", 14, P.mute, Modifier.padding(start = 8.dp, bottom = 6.dp))
     }
 }
@@ -175,6 +178,22 @@ private fun SectionCap(left: String, right: String) {
     }
 }
 
+/** A list as a small card: how many things, its name and a progress bar. No pictures. */
+@Composable
+private fun ListCard(l: BinderList, modifier: Modifier, open: () -> Unit, hold: () -> Unit) {
+    Column(
+        modifier.height(120.dp).clip(RoundedCornerShape(24.dp)).background(P.surface)
+            .tapHold(open, hold).padding(14.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Txt("${l.items.size}", 26, weight = FontWeight.Medium, ls = (-0.02).em)
+        Column {
+            Txt(l.name, 15, weight = FontWeight.Medium, maxLines = 1)
+            Progress(l.progress(), Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
 // ----- Tiles -----
 
 @Composable
@@ -184,13 +203,11 @@ private fun ColumnScope.TilesHome(
     LazyVerticalGrid(
         GridCells.Fixed(2),
         Modifier.weight(1f),
-        contentPadding = PaddingValues(bottom = pad.dp),
+        contentPadding = PaddingValues(top = 6.dp, bottom = pad.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(shown, key = { it.id }) { l ->
-            Tile(l.name, l.countLabel(), l.stack(), false, onHold = { hold(l) }) { open(l) }
-        }
+        items(shown, key = { it.id }) { l -> ListCard(l, Modifier.fillMaxWidth(), { open(l) }, { hold(l) }) }
     }
 }
 
@@ -210,34 +227,19 @@ private fun ListRow(
             onRight = { vm.togglePin(l.id) },
             onLeft = { vm.deleteList(l) },
         ) {
-            val a = l.stack()
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface)
                     .tapHold({ open(l) }, { hold(l) })
-                    .padding(start = 12.dp, end = if (reorder) 4.dp else 16.dp, top = 12.dp, bottom = 12.dp),
+                    .padding(start = 14.dp, end = if (reorder) 4.dp else 16.dp, top = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(P.bg)) {
-                    ArtBox(
-                        a[0],
-                        Modifier.offset(9.dp, 10.dp).width(20.dp).height(30.dp).rotate(-8f)
-                            .border(1.5.dp, P.bg, RoundedCornerShape(6.dp)),
-                        5.dp, 120,
-                    )
-                    ArtBox(
-                        a[1],
-                        Modifier.offset(20.dp, 11.dp).width(20.dp).height(30.dp).rotate(7f)
-                            .border(1.5.dp, P.bg, RoundedCornerShape(6.dp)),
-                        5.dp, 120,
-                    )
-                }
+                ProgressRing(l.progress(), 44.dp)
                 Column(Modifier.weight(1f)) {
                     Txt(l.name, 15, weight = FontWeight.Medium, maxLines = 1)
                     Txt("${l.items.size} items · ${l.doneCount()} done", 12, P.mute, maxLines = 1)
-                    Progress(l.progress(), Modifier.padding(top = 6.dp))
                 }
-                if (reorder) Grip() else Txt("${(l.progress() * 100).roundToInt()}%", 13, P.mute)
+                if (reorder) Grip()
             }
         }
     }
@@ -250,55 +252,36 @@ private fun ColumnScope.RowsHome(
 ) {
     val state = rememberLazyListState()
     val rs = remember(state) { ReorderState(state) { f, t -> vm.moveListTo(f, t) } }
-    LazyColumn(Modifier.weight(1f), state = state, contentPadding = PaddingValues(bottom = pad.dp)) {
+    LazyColumn(Modifier.weight(1f), state = state, contentPadding = PaddingValues(top = 6.dp, bottom = pad.dp)) {
         items(shown, key = { it.id }) { l -> ListRow(vm, l, rs, open, hold) }
     }
 }
 
-// ----- Pinned (cards on top, rows below) -----
-
-@Composable
-private fun PinCard(l: BinderList, open: () -> Unit, hold: () -> Unit) {
-    val a = l.stack()
-    Box(
-        Modifier.width(150.dp).height(220.dp).clip(RoundedCornerShape(26.dp)).background(P.surface)
-            .tapHold(open, hold)
-    ) {
-        ArtBox(
-            a[1],
-            Modifier.offset(58.dp, 24.dp).width(68.dp).height(96.dp).rotate(7f)
-                .border(2.dp, P.surface, RoundedCornerShape(10.dp)),
-            10.dp, 300,
-        )
-        ArtBox(
-            a[0],
-            Modifier.offset(16.dp, 16.dp).width(68.dp).height(96.dp).rotate(-6f)
-                .border(2.dp, P.surface, RoundedCornerShape(10.dp)),
-            10.dp, 300,
-        )
-        Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
-            Txt("${l.items.size}", 34, weight = FontWeight.Medium, ls = (-0.02).em)
-            Txt(l.name, 15, weight = FontWeight.Medium, maxLines = 1)
-            Txt("${l.doneCount()} done", 12, P.mute)
-            Progress(l.progress(), Modifier.padding(top = 8.dp))
-        }
-    }
-}
+// ----- Pinned (small cards on top, rows below) -----
 
 @Composable
 private fun ColumnScope.PinnedHome(
     vm: BinderViewModel, lists: List<BinderList>, pad: Int,
     open: (BinderList) -> Unit, hold: (BinderList) -> Unit,
 ) {
+    val o = vm.opts
     val state = rememberLazyListState()
     val rs = remember(state) { ReorderState(state) { f, t -> vm.moveListTo(f, t) } }
     val pinned = lists.filter { it.pinned }
+    val unpinned = lists.filter { !it.pinned }
+    // the dashed slot: choose a list to pin
+    val pinOne = {
+        vm.sheet = SheetData(
+            "Pin a ${o.listLower}",
+            unpinned.map { u -> Act(u.name) { vm.togglePin(u.id) } },
+        )
+    }
     LazyColumn(Modifier.weight(1f), state = state, contentPadding = PaddingValues(bottom = pad.dp)) {
         item(key = "~cap1") { SectionCap("PINNED", if (pinned.isEmpty()) "" else "swipe") }
         item(key = "~pins") {
-            if (pinned.isEmpty()) {
+            if (pinned.isEmpty() && !o.emptySlots) {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(16.dp)) {
-                    Txt("Press and hold a list below, then choose “Pin to top” to keep it here.", 13, P.mute)
+                    Txt("Press and hold a ${o.listLower} below, then choose “Pin to top” to keep it here.", 13, P.mute)
                 }
             } else {
                 // lets the cards run to the edges of the screen
@@ -311,20 +294,27 @@ private fun ColumnScope.PinnedHome(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(pinned, key = { it.id }) { l -> PinCard(l, { open(l) }, { hold(l) }) }
+                    items(pinned, key = { it.id }) { l ->
+                        ListCard(l, Modifier.width(140.dp), { open(l) }, { hold(l) })
+                    }
+                    if (o.emptySlots && unpinned.isNotEmpty()) {
+                        item(key = "~slot") {
+                            DashedSlot(Modifier.width(110.dp).height(120.dp), 24.dp) { pinOne() }
+                        }
+                    }
                 }
             }
         }
-        item(key = "~cap2") { SectionCap("ALL LISTS", "${lists.size}") }
+        item(key = "~cap2") { SectionCap("ALL ${o.lists.uppercase()}", "${lists.size}") }
         items(lists, key = { it.id }) { l -> ListRow(vm, l, rs, open, hold) }
     }
 }
 
-// ----- Stacks -----
+// ----- Stacks (real covers fanned out; empty lists show a dashed slot) -----
 
 @Composable
 private fun ColumnScope.StacksHome(
-    shown: List<BinderList>, pad: Int, open: (BinderList) -> Unit, hold: (BinderList) -> Unit,
+    vm: BinderViewModel, shown: List<BinderList>, pad: Int, open: (BinderList) -> Unit, hold: (BinderList) -> Unit,
 ) {
     LazyColumn(
         Modifier.weight(1f),
@@ -332,15 +322,22 @@ private fun ColumnScope.StacksHome(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(shown, key = { it.id }) { l ->
-            val arts = if (l.items.isEmpty()) l.stack() else l.items.take(4).map { it.art() }
+            val arts = l.items.take(4).map { it.art() }
             val more = l.items.size - 4
-            val slots = arts.size + if (more > 0) 1 else 0
+            val slots = maxOf(1, arts.size + if (more > 0) 1 else 0)
             val rot = listOf(-4f, 2f, -2f, 3f, 3f)
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).tapHold({ open(l) }, { hold(l) }).padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(Modifier.width((78 + 54 * (slots - 1)).dp).height(118.dp)) {
+                    if (arts.isEmpty()) {
+                        Box(
+                            Modifier.offset(y = 5.dp).width(78.dp).height(108.dp).clip(RoundedCornerShape(14.dp))
+                                .border(2.dp, P.line, RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Ic.Plus, null, tint = P.mute, modifier = Modifier.size(22.dp)) }
+                    }
                     arts.forEachIndexed { i, a ->
                         ArtBox(
                             a,
@@ -402,12 +399,15 @@ private fun ColumnScope.BentoHome(
                     Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(P.surface)
                         .tapHold({ open(big) }, { hold(big) })
                 ) {
-                    ArtBox(
-                        big.stack()[0],
-                        Modifier.offset(18.dp, 18.dp).width(84.dp).height(118.dp).rotate(-6f)
-                            .border(2.dp, P.surface, RoundedCornerShape(12.dp)),
-                        12.dp, 300,
-                    )
+                    val first = big.items.firstOrNull()
+                    if (first != null) {
+                        ArtBox(
+                            first.art(),
+                            Modifier.offset(18.dp, 18.dp).width(84.dp).height(118.dp).rotate(-6f)
+                                .border(2.dp, P.surface, RoundedCornerShape(12.dp)),
+                            12.dp, 300,
+                        )
+                    }
                     Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
                         Txt("${big.items.size}", 44, font = TitleFont, ls = (-0.02).em)
                         Txt(big.name, 15, weight = FontWeight.Medium, maxLines = 1)
@@ -419,7 +419,7 @@ private fun ColumnScope.BentoHome(
                         Column(Modifier.align(Alignment.BottomStart)) {
                             Txt("$totalDone", 40, Color(0xFF111111), font = TitleFont, ls = (-0.02).em)
                             Txt("done", 15, Color(0xFF111111), weight = FontWeight.Medium)
-                            Txt("across all lists", 12, Color(0xFF111111))
+                            Txt("across all ${vm.opts.listsLower}", 12, Color(0xFF111111))
                         }
                     }
                     if (second != null) {
@@ -457,6 +457,40 @@ private fun ColumnScope.BentoHome(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+    }
+}
+
+// ----- Pinned / recently edited (from the menu) -----
+
+@Composable
+fun ListsScreen(vm: BinderViewModel, mode: Int) {
+    val o = vm.opts
+    val nav = vm.nav
+    val all = vm.lists
+    val shown = if (mode == 0) all.filter { it.pinned } else all.sortedByDescending { it.activity() }.take(12)
+    val state = rememberLazyListState()
+    val rs = remember(state, mode) { ReorderState(state) { f, t -> if (mode == 0) vm.moveListTo(f, t) } }
+    Box(Modifier.fillMaxSize()) {
+        Screen {
+            Header2(
+                if (mode == 0) "Pinned" else "Recently edited",
+                "${shown.size} ${if (shown.size == 1) o.listLower else o.listsLower}",
+                onBack = { nav.pop() },
+            )
+            if (shown.isEmpty()) {
+                EmptyBlock(
+                    if (mode == 0) "Nothing pinned" else "Nothing yet",
+                    if (mode == 0) "Press and hold a ${o.listLower}, then choose “Pin to top”." else "Make a ${o.listLower} to see it here.",
+                )
+            } else {
+                LazyColumn(Modifier.weight(1f), state = state, contentPadding = PaddingValues(top = 6.dp, bottom = 100.dp)) {
+                    items(shown, key = { it.id }) { l ->
+                        ListRow(vm, l, rs, { nav.push(Route.Lst(it.id)) }, { vm.sheet = listMenu(vm, it) })
+                    }
+                }
+            }
+        }
+        MenuFab(vm, onAdd = { nav.push(Route.NewList) })
     }
 }
 
@@ -510,6 +544,15 @@ private fun CheckRow(
     }
 }
 
+/** What an item shows while its details are still to be fetched. */
+@Composable
+private fun PendingCover(square: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier.aspectRatio(if (square) 1f else 2f / 3f).dashedBorder(12.dp).padding(6.dp),
+        contentAlignment = Alignment.Center,
+    ) { Txt("Details pending", 11, P.mute, align = TextAlign.Center) }
+}
+
 @Composable
 private fun MediaRow(
     vm: BinderViewModel, l: BinderList, item: Item, handles: Boolean, rs: ReorderState,
@@ -528,11 +571,15 @@ private fun MediaRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CoverView(item.title, item.art(), Modifier.width(48.dp), px = 200, showTitle = false)
+                if (item.detailsPending && item.images.isEmpty()) PendingCover(l.kind.square, Modifier.width(48.dp))
+                else CoverView(item.title, item.art(), Modifier.width(48.dp), px = 200, showTitle = false, square = l.kind.square)
                 Column(Modifier.weight(1f)) {
                     Txt(item.title, 16, maxLines = 2)
                     if (item.sub.isNotBlank()) Txt(item.sub, 13, P.mute, maxLines = 1)
-                    Txt(l.kind.stages[item.stage], 12, if (item.stage > 0) Coral else P.mute)
+                    Txt(
+                        if (item.detailsPending) "Details pending" else l.kind.stages[item.stage], 12,
+                        if (item.stage > 0 && !item.detailsPending) Coral else P.mute,
+                    )
                 }
                 if (handles) Grip()
                 else if (l.kind.hasRating && item.rating > 0f) Txt("★ ${fmtRating(item.rating)}", 13, Coral)
@@ -563,7 +610,7 @@ private fun SectionRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CoverView(item.title, item.art(), Modifier.width(38.dp), px = 150, showTitle = false)
+                    CoverView(item.title, item.art(), Modifier.width(38.dp), px = 150, showTitle = false, square = l.kind.square)
                     Column(Modifier.weight(1f)) {
                         Txt(item.title, 17, if (done) P.mute else P.fg, font = TitleFont, maxLines = 1)
                         if (item.sub.isNotBlank()) Txt(item.sub, 12, P.mute, maxLines = 1)
@@ -576,19 +623,71 @@ private fun SectionRow(
     }
 }
 
+/** One cover in the grid, with whatever the list is set to show under it. */
+@Composable
+private fun GridCell(l: BinderList, item: Item, px: Int, open: (Item) -> Unit, hold: (Item) -> Unit) {
+    val last = l.kind.stages.lastIndex
+    val done = item.stage == last && !l.kind.isChecklist
+    Column(Modifier.tapHold({ open(item) }, { hold(item) })) {
+        if (item.detailsPending && item.images.isEmpty()) {
+            PendingCover(l.kind.square, Modifier.fillMaxWidth())
+        } else {
+            CoverView(item.title, item.art(), Modifier.fillMaxWidth(), px = px, square = l.kind.square) {
+                if (Under.PROGRESS in l.under && item.stage in 1 until last) {
+                    Box(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp).height(4.dp)
+                            .clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))
+                    ) {
+                        Box(Modifier.fillMaxHeight().fillMaxWidth(item.stage.toFloat() / last).background(Coral))
+                    }
+                }
+                if (done) {
+                    Box(
+                        Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape).background(Coral),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Ic.Check, null, tint = Color(0xFF111111), modifier = Modifier.size(14.dp)) }
+                }
+            }
+        }
+        if (Under.TITLE in l.under) {
+            Txt(item.title, 13, modifier = Modifier.padding(top = 6.dp), weight = FontWeight.Medium, maxLines = 2, lh = 15.sp)
+            if (item.sub.isNotBlank()) Txt(item.sub, 12, P.mute, maxLines = 1)
+        }
+        if (Under.RATING in l.under && l.kind.hasRating && item.rating > 0f) {
+            Txt(starText(item.rating), 12, Coral, Modifier.padding(top = 2.dp))
+        }
+        if (Under.ADDED in l.under) Txt(dateLabel(item.added), 11, P.mute, Modifier.padding(top = 2.dp))
+    }
+}
+
 @Composable
 private fun ItemsBody(
     vm: BinderViewModel, l: BinderList, layout: Layout, shown: List<Item>, handles: Boolean, pad: Int,
-    open: (Item) -> Unit, hold: (Item) -> Unit,
+    addBar: Boolean, onAdd: () -> Unit, open: (Item) -> Unit, hold: (Item) -> Unit,
 ) {
+    val o = vm.opts
     val state = rememberLazyListState()
     val rs = remember(state, l.id) { ReorderState(state) { f, t -> vm.moveItemTo(l.id, f, t) } }
     val rowKind = l.kind.isChecklist || layout == Layout.LIST
 
     when {
         shown.isEmpty() -> Column(Modifier.fillMaxSize()) {
-            if (l.items.isEmpty()) EmptyBlock("Nothing here yet", "Add your first one with the + button.")
-            else EmptyBlock("Nothing in this view", "Try another filter above.")
+            if (l.items.isEmpty()) {
+                val hint = if (addBar) "Type below to add your first ${l.kind.single}"
+                else "Hold the menu button to add your first ${l.kind.single}"
+                if (o.emptySlots && !l.kind.isChecklist) {
+                    val cols = if (layout == Layout.CARDS) 2 else l.columns
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        DashedSlot(Modifier.weight(1f).aspectRatio(if (l.kind.square) 1f else 2f / 3f), 12.dp) { onAdd() }
+                        repeat(cols - 1) { Spacer(Modifier.weight(1f)) }
+                    }
+                    Txt(hint, 14, P.mute, Modifier.fillMaxWidth().padding(top = 40.dp), align = TextAlign.Center)
+                } else {
+                    EmptyBlock("Nothing here yet", hint)
+                }
+            } else {
+                EmptyBlock("Nothing in this view", "Try another filter above.")
+            }
         }
         layout == Layout.SECTIONS -> LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = pad.dp)) {
             l.kind.stages.forEachIndexed { si, sname ->
@@ -625,6 +724,7 @@ private fun ItemsBody(
                             CoverView(
                                 item.title, item.art(),
                                 Modifier.weight(1f).tapHold({ open(item) }, { hold(item) }), size = 10,
+                                square = l.kind.square,
                             )
                         }
                         repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -646,7 +746,8 @@ private fun ItemsBody(
                     Modifier.clip(RoundedCornerShape(24.dp)).background(P.surface)
                         .tapHold({ open(item) }, { hold(item) }).padding(10.dp)
                 ) {
-                    CoverView(item.title, item.art(), Modifier.fillMaxWidth(), size = 16, px = 600)
+                    if (item.detailsPending && item.images.isEmpty()) PendingCover(l.kind.square, Modifier.fillMaxWidth())
+                    else CoverView(item.title, item.art(), Modifier.fillMaxWidth(), size = 16, px = 600, square = l.kind.square)
                     Txt(item.title, 15, weight = FontWeight.Medium, modifier = Modifier.padding(top = 10.dp), maxLines = 2)
                     if (item.sub.isNotBlank()) Txt(item.sub, 12, P.mute, maxLines = 1)
                     Txt(l.kind.stages[item.stage], 12, if (item.stage > 0) Coral else P.mute, Modifier.padding(top = 2.dp))
@@ -654,20 +755,110 @@ private fun ItemsBody(
             }
         }
         else -> LazyVerticalGrid(
-            GridCells.Fixed(3),
+            GridCells.Fixed(l.columns),
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = pad.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(shown, key = { it.id }) { item ->
-                Column(Modifier.tapHold({ open(item) }, { hold(item) })) {
-                    CoverView(item.title, item.art(), Modifier.fillMaxWidth(), px = 400)
-                    Txt(item.title, 13, modifier = Modifier.padding(top = 6.dp), weight = FontWeight.Medium, maxLines = 2, lh = 15.sp)
-                    if (item.sub.isNotBlank()) Txt(item.sub, 12, P.mute, maxLines = 1)
+            items(shown, key = { it.id }) { item -> GridCell(l, item, if (l.columns == 2) 600 else 400, open, hold) }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ViewSheet(vm: BinderViewModel, l: BinderList, onClose: () -> Unit) {
+    val unders = Under.entries
+    SheetFrame(onClose) {
+        Txt("View", 22, weight = FontWeight.Medium)
+        Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+            Cap("LAYOUT")
+            FlowChips(l.kind.layouts.map { it.label }, l.kind.layouts.indexOf(l.layout)) { vm.setLayout(l.id, l.kind.layouts[it]) }
+            Cap("SORT")
+            FlowChips(Sort.entries.map { it.label }, l.sort.ordinal) { vm.setSort(l.id, Sort.entries[it]) }
+            if (!l.kind.isChecklist) {
+                Cap("SHOW UNDER COVERS")
+                MultiChips(unders.map { it.label }, unders.indices.filter { unders[it] in l.under }.toSet()) {
+                    vm.toggleUnder(l.id, unders[it])
                 }
+                Cap("COLUMNS")
+                Seg(listOf("2", "3", "4"), l.columns - 2) { vm.setColumns(l.id, it + 2) }
+            }
+            Txt("Swipe a row right to move it to the next status, left to delete. Press and hold for more.", 12, P.mute, Modifier.padding(top = 14.dp, bottom = 12.dp))
+        }
+        BigButton("Done") { onClose() }
+    }
+}
+
+@Composable
+fun ListScreen(vm: BinderViewModel, id: String) {
+    val nav = vm.nav
+    val o = vm.opts
+    var stage by rememberSaveable { mutableStateOf(-1) } // -1 = all
+    var showView by remember { mutableStateOf(false) }
+
+    val l = vm.lists.firstOrNull { it.id == id }
+    if (l == null) {
+        LaunchedEffect(Unit) { nav.pop() }
+        return
+    }
+    // items saved while offline get their details when the list opens (only if fetching is on)
+    LaunchedEffect(id, o.fetch) { vm.retryPending(id) }
+
+    val layout = if (l.layout in l.kind.layouts) l.layout else l.kind.layouts.first()
+    val shown = l.sorted().filter { stage < 0 || it.stage == stage }
+    val handles = vm.reorder && l.sort == Sort.MANUAL
+    val addBar = l.kind.isChecklist || o.add == AddStyle.BAR
+    val open = { item: Item -> nav.push(Route.ItemEdit(l.id, item.id)) }
+    val hold = { item: Item -> vm.sheet = itemMenu(vm, l, item) }
+    val openEditor = { nav.push(Route.ItemEdit(l.id, null)) }
+    val openQuick = { vm.quick = l.id }
+    val addDefault = { if (o.add == AddStyle.SHEET) openQuick() else openEditor() }
+
+    Box(Modifier.fillMaxSize()) {
+        Screen {
+            Header2(
+                l.name, l.countLabel(), onBack = { nav.pop() },
+                right = {
+                    CircleBtn(Ic.Grid, "View options") { showView = true }
+                    CircleBtn(Ic.Dots, "${o.list} options") {
+                        vm.sheet = SheetData(
+                            l.name,
+                            buildList {
+                                add(Act(if (l.pinned) "Unpin" else "Pin to top") { vm.togglePin(l.id) })
+                                add(Act("Rename") { vm.rename = l })
+                                if (layout == Layout.LIST || layout == Layout.SECTIONS) {
+                                    add(Act("Reorder by dragging") {
+                                        if (l.sort != Sort.MANUAL) vm.setSort(l.id, Sort.MANUAL)
+                                        vm.reorder = true
+                                    })
+                                }
+                                add(Act("Delete ${o.listLower}", danger = true) { vm.deleteList(l); nav.pop() })
+                            },
+                        )
+                    }
+                },
+            )
+            Progress(l.progress(), Modifier.padding(top = 6.dp, bottom = 2.dp))
+            Chips(listOf("All") + l.kind.stages, stage + 1) { stage = it - 1 }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                ItemsBody(vm, l, layout, shown, handles, if (addBar) 24 else 100, addBar, { addDefault() }, open, hold)
+            }
+            if (addBar) {
+                AddBar(
+                    if (l.kind.isChecklist) "Add an item…" else "Add a ${l.kind.single}…",
+                    onAdd = { t -> vm.saveItem(l.id, Item(title = t)) },
+                    onFull = { openEditor() },
+                )
             }
         }
+        if (!addBar) {
+            MenuFab(
+                vm, onAdd = { addDefault() },
+                onAddHold = { if (o.add == AddStyle.SHEET) openEditor() else openQuick() },
+            )
+        }
+        if (showView) ViewSheet(vm, l) { showView = false }
     }
 }
 
@@ -701,97 +892,15 @@ private fun AddBar(hint: String, onAdd: (String) -> Unit, onFull: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        RoundPlus(52.dp, onHold = onFull) { submit() }
-    }
-}
-
-@Composable
-private fun BoxScope.ViewSheet(vm: BinderViewModel, l: BinderList, onClose: () -> Unit) {
-    SheetFrame(onClose) {
-        Txt("View", 20, font = TitleFont)
-        Cap("LAYOUT")
-        FlowChips(l.kind.layouts.map { it.label }, l.kind.layouts.indexOf(l.layout)) { vm.setLayout(l.id, l.kind.layouts[it]) }
-        Cap("SORT")
-        FlowChips(Sort.entries.map { it.label }, l.sort.ordinal) { vm.setSort(l.id, Sort.entries[it]) }
-        Txt("Swipe a row right to move it to the next status, left to delete. Press and hold for more.", 12, P.mute, Modifier.padding(top = 14.dp, bottom = 16.dp))
-        BigButton("Done") { onClose() }
-    }
-}
-
-@Composable
-fun ListScreen(vm: BinderViewModel, id: String) {
-    val nav = vm.nav
-    val o = vm.opts
-    var stage by rememberSaveable { mutableStateOf(-1) } // -1 = all
-    var showView by remember { mutableStateOf(false) }
-
-    val l = vm.lists.firstOrNull { it.id == id }
-    if (l == null) {
-        LaunchedEffect(Unit) { nav.pop() }
-        return
-    }
-    val layout = if (l.layout in l.kind.layouts) l.layout else l.kind.layouts.first()
-    val shown = l.sorted().filter { stage < 0 || it.stage == stage }
-    val handles = vm.reorder && l.sort == Sort.MANUAL
-    val addBar = l.kind.isChecklist || o.add == AddStyle.BAR
-    val open = { item: Item -> nav.push(Route.ItemEdit(l.id, item.id)) }
-    val hold = { item: Item -> vm.sheet = itemMenu(vm, l, item) }
-    val openEditor = { nav.push(Route.ItemEdit(l.id, null)) }
-    val openQuick = { vm.quick = l.id }
-
-    Box(Modifier.fillMaxSize()) {
-        Screen {
-            TopBar(
-                left = { CircleBtn(Ic.Back, "Back") { nav.pop() } },
-                right = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CircleBtn(Ic.Grid, "View options") { showView = true }
-                        CircleBtn(Ic.Dots, "List options") {
-                            vm.sheet = SheetData(
-                                l.name,
-                                buildList {
-                                    add(Act(if (l.pinned) "Unpin" else "Pin to top") { vm.togglePin(l.id) })
-                                    add(Act("Rename") { vm.rename = l })
-                                    if (layout == Layout.LIST || layout == Layout.SECTIONS) {
-                                        add(Act("Reorder by dragging") {
-                                            if (l.sort != Sort.MANUAL) vm.setSort(l.id, Sort.MANUAL)
-                                            vm.reorder = true
-                                        })
-                                    }
-                                    add(Act("Delete list", danger = true) { vm.deleteList(l); nav.pop() })
-                                },
-                            )
-                        }
-                    }
-                },
-            )
-            Txt(l.name, 34, font = TitleFont, maxLines = 2, lh = 38.sp, modifier = Modifier.padding(top = 8.dp))
-            Txt(l.countLabel(), 14, P.mute, Modifier.padding(top = 2.dp, bottom = 8.dp))
-            if (layout == Layout.SECTIONS || l.kind.isChecklist) Progress(l.progress(), Modifier.padding(bottom = 4.dp))
-            Chips(listOf("All") + l.kind.stages, stage + 1) { stage = it - 1 }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                ItemsBody(vm, l, layout, shown, handles, if (addBar) 24 else 100, open, hold)
-            }
-            if (addBar) {
-                AddBar(
-                    if (l.kind.isChecklist) "Add an item…" else "Add a ${l.kind.single}…",
-                    onAdd = { t -> vm.saveItem(l.id, Item(title = t)) },
-                    onFull = { openEditor() },
-                )
-            }
-        }
-        if (!addBar) {
-            RoundPlus(
-                60.dp,
-                Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 16.dp, bottom = 18.dp),
-                onHold = { if (o.add == AddStyle.SHEET) openEditor() else openQuick() },
-            ) { if (o.add == AddStyle.SHEET) openQuick() else openEditor() }
-        }
-        if (showView) ViewSheet(vm, l) { showView = false }
+        RoundBtn(Ic.Plus, "Add", 52.dp, onHold = onFull) { submit() }
     }
 }
 
 // ───────────────────────── 3 · Item (add / edit) ─────────────────────────
+
+private fun openLink(ctx: android.content.Context, url: String) {
+    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
 
 @Composable
 fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
@@ -838,27 +947,37 @@ fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
     val art = Art(look, imgList.firstOrNull())
     val shownTitle = title.ifBlank { "New ${l.kind.single}" }
 
+    val ctx = LocalContext.current
+    val info = listOf(existing?.year ?: "", existing?.genre ?: "", existing?.description ?: "")
+        .filter { it.isNotBlank() && it.length <= 24 }.joinToString(" · ")
+    val longText = existing?.description?.takeIf { it.length > 24 } ?: ""
+    val link = existing?.sourceUrl ?: ""
+    val src = Source.entries.firstOrNull { it.label == existing?.sourceName }
+
     Column(
         Modifier.fillMaxSize().statusBarsPadding().imePadding().padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        TopBar(
-            left = { CircleBtn(Ic.Back, "Back") { leave() } },
-            right = { Pill("Done", filled = true) { leave() } },
+        Header2(
+            shownTitle, l.kind.label, onBack = { leave() },
+            right = {
+                if (existing == null) {
+                    Pill("Done", filled = true) { leave() }
+                } else {
+                    if (link.isNotEmpty()) CircleBtn(Ic.Out, "Open link") { openLink(ctx, link) }
+                    CircleBtn(Ic.Dots, "More") {
+                        vm.sheet = SheetData(existing.title, listOf(Act("Delete", danger = true) { confirm = true }))
+                    }
+                }
+            },
         )
-        Txt(l.name.uppercase(), 11, P.mute, ls = 0.08.em)
         if (collage) {
-            Txt(shownTitle, 34, font = TitleFont, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 14.dp), maxLines = 3, lh = 38.sp)
-            Box(
-                Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp).width(72.dp).height(4.dp)
-                    .rotate(-2f).clip(CircleShape).background(Coral)
-            )
             Row(
                 Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CoverView(shownTitle, art, Modifier.width(112.dp).rotate(-4f), size = 15, px = 600)
+                CoverView(shownTitle, art, Modifier.width(112.dp).rotate(-4f), size = 15, px = 600, square = l.kind.square)
                 Column(Modifier.weight(1f).rotate(2f).clip(RoundedCornerShape(20.dp)).background(P.surface).padding(14.dp)) {
                     Txt(note.ifBlank { "Write a note below and it shows up here." }, 17, if (note.isBlank()) P.mute else P.fg, font = TitleFont, maxLines = 6)
                 }
@@ -869,6 +988,13 @@ fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
                 }
                 if (l.kind.hasRating) Stars(rating) { rating = it }
             }
+        } else if (l.kind.square) {
+            Column(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                CoverView(shownTitle, art, Modifier.width(168.dp), size = 15, px = 800, square = true)
+                if (sub.isNotBlank()) Txt(sub, 20, weight = FontWeight.Medium, modifier = Modifier.padding(top = 14.dp), maxLines = 1)
+                if (info.isNotEmpty()) Txt(info, 14, P.mute, Modifier.padding(top = 2.dp), maxLines = 1)
+                if (l.kind.hasRating) Stars(rating) { rating = it }
+            }
         } else {
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -877,13 +1003,45 @@ fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
             ) {
                 CoverView(shownTitle, art, Modifier.width(110.dp).rotate(-4f), size = 15, px = 600)
                 Column(Modifier.weight(1f)) {
-                    Txt(shownTitle, 26, font = TitleFont, maxLines = 3, lh = 29.sp)
-                    if (sub.isNotBlank()) Txt(sub, 14, P.mute, Modifier.padding(top = 2.dp), maxLines = 1)
+                    if (sub.isNotBlank()) Txt(sub, 16, weight = FontWeight.Medium, maxLines = 2)
+                    if (info.isNotEmpty()) Txt(info, 14, P.mute, Modifier.padding(top = 2.dp), maxLines = 2)
                     if (l.kind.hasRating) Stars(rating) { rating = it }
                 }
             }
         }
         Seg(l.kind.stages, stage, Modifier.padding(vertical = 14.dp)) { stage = it }
+        if (existing != null && existing.detailsPending) {
+            Txt(
+                "Details pending. They are fetched when you open this ${vm.opts.listLower} with fetching turned on.",
+                12, P.mute, Modifier.padding(bottom = 10.dp),
+            )
+        }
+        if (existing != null && (existing.year.isNotEmpty() || existing.genre.isNotEmpty() || existing.sourceName.isNotEmpty())) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(horizontal = 16.dp, vertical = 4.dp)) {
+                val rows = listOf("Released" to existing.year, "Genre" to existing.genre, "Source" to existing.sourceName)
+                    .filter { it.second.isNotEmpty() }
+                rows.forEachIndexed { i, (k, v) ->
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(P.line))
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Txt(k, 15)
+                        Txt(v, 15, P.mute, Modifier.padding(start = 16.dp), maxLines = 1)
+                    }
+                }
+            }
+        }
+        if (longText.isNotEmpty()) Txt(longText, 14, P.mute, Modifier.padding(top = 12.dp), lh = 20.sp)
+        if (link.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp).height(52.dp).clip(CircleShape).background(P.surface)
+                    .clickable { openLink(ctx, link) },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Txt(src?.openLabel ?: "Open link", 15, weight = FontWeight.Medium)
+                Icon(Ic.Out, null, tint = P.fg, modifier = Modifier.padding(start = 8.dp).size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(14.dp))
         Field("Title", title) { title = it }
         if (l.kind.subLabel.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))

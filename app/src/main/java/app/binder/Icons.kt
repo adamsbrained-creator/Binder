@@ -33,5 +33,7 @@ object Ic {
     val Grid = icon("grid", "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z")
     val Handle = icon("handle", "M5 9h14M5 15h14")
     val Close = icon("close", "M6 6l12 12M18 6L6 18")
+    val Chevron = icon("chevron", "M9 5l7 7-7 7")
+    val Out = icon("out", "M8 16L16 8M9 8h7v7")
     val Photo = icon("photo", "M4 5h16v14H4z", "M4 16l5-5 4 4 3-3 4 4")
 }

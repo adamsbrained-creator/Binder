@@ -1,0 +1,75 @@
+# Backup build, different setup: manual only ("Run workflow" in the Actions tab).
+# Zulu Java, explicit Android SDK install, Gradle downloaded by hand and a wrapper created,
+# no caching, extra logging. Also finds the project folder by itself.
+# Result: Actions > the run > Artifacts > binder-debug-apk-backup
+name: Android (backup)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the project
+        run: |
+          f=$(find . -maxdepth 3 -name 'settings.gradle*' -not -path './.git/*' | head -n1)
+          if [ -z "$f" ]; then
+            echo "::error::No settings.gradle.kts found. Files in the repo:"
+            find . -maxdepth 3 -not -path './.git/*' | head -60
+            exit 1
+          fi
+          echo "PROJ=$(dirname "$f")" >> "$GITHUB_ENV"
+          echo "Project folder: $(dirname "$f")"
+          echo "Kotlin files found: $(find "$(dirname "$f")" -name '*.kt' | wc -l)"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Install Gradle 8.9 and create the wrapper
+        working-directory: ${{ env.PROJ }}
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          /opt/gradle-8.9/bin/gradle wrapper --gradle-version 8.9 --no-daemon
+          chmod +x gradlew
+
+      - name: Restore signing key (optional)
+        env:
+          KS: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            mkdir -p ~/.android
+            echo "$KS" | base64 -d > ~/.android/debug.keystore
+          fi
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJ }}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --console=plain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binder-debug-apk-backup
+          path: ${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload error reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: ${{ env.PROJ }}/app/build/reports
+          if-no-files-found: ignore

@@ -11,8 +11,6 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -23,6 +21,8 @@ sealed interface Route {
     data object Search : Route
     data object More : Route
     data object NewList : Route
+    data object About : Route
+    data class Lists(val mode: Int) : Route // 0 = pinned, 1 = recently edited
     data class Lst(val id: String) : Route
     data class ItemEdit(val listId: String, val itemId: String?) : Route
 }
@@ -61,13 +61,14 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
     // temporary screen state (not saved)
     var reorder by mutableStateOf(false)
     var drawer by mutableStateOf(false)
+    var menu by mutableStateOf(false)
     var sheet by mutableStateOf<SheetData?>(null)
     var quick by mutableStateOf<String?>(null)
     var rename by mutableStateOf<BinderList?>(null)
     var undo by mutableStateOf<Undo?>(null)
 
     init {
-        nav.onChange = { reorder = false; drawer = false; sheet = null; quick = null }
+        nav.onChange = { reorder = false; drawer = false; menu = false; sheet = null; quick = null }
     }
 
     // ───────── options ─────────
@@ -85,6 +86,9 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             home = pick("home", HomeStyle.entries, d.home),
             add = pick("add", AddStyle.entries, d.add),
             itemPage = pick("itemPage", ItemPage.entries, d.itemPage),
+            fetch = prefs.getBoolean("fetch", d.fetch),
+            listName = pick("listName", ListWord.entries, d.listName),
+            emptySlots = prefs.getBoolean("emptySlots", d.emptySlots),
         )
     }
 
@@ -95,6 +99,7 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             .putString("theme", o.theme).putString("appName", o.appName).putString("font", o.font.name)
             .putString("header", o.header.name).putString("nav", o.nav.name).putString("home", o.home.name)
             .putString("add", o.add.name).putString("itemPage", o.itemPage.name)
+            .putBoolean("fetch", o.fetch).putString("listName", o.listName.name).putBoolean("emptySlots", o.emptySlots)
             .apply()
     }
 
@@ -109,6 +114,10 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
     fun setLayout(id: String, layout: Layout) = edit(id) { it.copy(layout = layout) }
     fun setSort(id: String, sort: Sort) = edit(id) { it.copy(sort = sort) }
     fun togglePin(id: String) = edit(id) { it.copy(pinned = !it.pinned) }
+    fun setColumns(id: String, n: Int) = edit(id) { it.copy(columns = n.coerceIn(2, 4)) }
+    fun toggleUnder(id: String, u: Under) = edit(id) {
+        it.copy(under = if (u in it.under) it.under - u else it.under + u)
+    }
 
     fun moveList(id: String, delta: Int) {
         val i = lists.indexOfFirst { it.id == id }
@@ -187,7 +196,71 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun commit(new: List<BinderList>) {
         lists = new
-        runCatching { file.writeText(toJson(new).toString()) }
+        runCatching { file.writeText(listsToJson(new).toString()) }
+    }
+
+    // ───────── fetching details (only when Opts.fetch is on) ─────────
+
+    /** Saves a search result as a normal item. The cover is downloaded first; if that fails the item is still saved. */
+    fun addFound(listId: String, f: Found, extra: (Item) -> Item = { it }, done: () -> Unit) {
+        viewModelScope.launch {
+            val cover = if (f.coverUrl.isEmpty()) null else withContext(Dispatchers.IO) { downloadCover(ctx, f.coverUrl) }
+            saveItem(listId, extra(f.toItem(listOfNotNull(cover))))
+            done()
+        }
+    }
+
+    /** No connection (or the lookup failed): keep what was typed and fetch the details later. */
+    fun addPending(listId: String, title: String) {
+        saveItem(listId, Item(title = title.trim(), detailsPending = true))
+    }
+
+    private var retrying = false
+
+    /** Looks up items that were saved while offline. Runs when a list opens, only if fetching is on. */
+    fun retryPending(listId: String) {
+        val l = lists.firstOrNull { it.id == listId } ?: return
+        val provider = Sources.forKind(l.kind) ?: return
+        val todo = l.items.filter { it.detailsPending }
+        if (!opts.fetch || todo.isEmpty() || retrying) return
+        retrying = true
+        viewModelScope.launch {
+            try {
+                for (item in todo.take(5)) { // a few at a time, to stay under the source's limit
+                    val hit = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val q = if (item.sub.isBlank()) item.title else "${item.title} ${item.sub}"
+                            provider.search(q).firstOrNull()
+                        }
+                    }
+                    val failure = hit.exceptionOrNull()
+                    if (failure is FetchFailure && failure.offline) break // still offline: try again next time
+                    val f = hit.getOrNull()
+                    if (f == null) {
+                        // nothing found, or the source said no: stop asking about this one
+                        if (failure == null) markFound(listId, item.id, null)
+                        continue
+                    }
+                    val cover = if (f.coverUrl.isEmpty()) null else withContext(Dispatchers.IO) { downloadCover(ctx, f.coverUrl) }
+                    markFound(listId, item.id, f.toItem(listOfNotNull(cover)))
+                }
+            } finally {
+                retrying = false
+            }
+        }
+    }
+
+    /** Fills in an item from a lookup. Keeps what the person typed or rated. */
+    private fun markFound(listId: String, itemId: String, f: Item?) = edit(listId) { l ->
+        l.copy(items = l.items.map { cur ->
+            if (cur.id != itemId) cur
+            else if (f == null) cur.copy(detailsPending = false)
+            else cur.copy(
+                sub = cur.sub.ifBlank { f.sub }, images = cur.images.ifEmpty { f.images },
+                sourceName = f.sourceName, sourceId = f.sourceId, sourceUrl = f.sourceUrl,
+                year = f.year, genre = f.genre, description = f.description, detailsPending = false,
+            )
+        })
     }
 
     // ───────── pictures ─────────
@@ -209,7 +282,7 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
                     val out = ctx.contentResolver.openOutputStream(uri) ?: return@runCatching false
                     ZipOutputStream(out).use { z ->
                         z.putNextEntry(ZipEntry("binder.json"))
-                        z.write(toJson(snapshot).toString(2).toByteArray(Charsets.UTF_8))
+                        z.write(listsToJson(snapshot).toString(2).toByteArray(Charsets.UTF_8))
                         z.closeEntry()
                         val used = snapshot.flatMap { it.items }.flatMap { it.images }.toSet()
                         for (n in used) {
@@ -247,7 +320,7 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
                             e = z.nextEntry
                         }
                     }
-                    json?.let { parse(it) }
+                    json?.let { parseLists(it) }
                 }.getOrNull()
             }
             if (found == null) {
@@ -263,57 +336,9 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun load(): List<BinderList> {
         if (!file.exists()) return emptyList()
-        return runCatching { parse(file.readText()) }.getOrElse {
+        return runCatching { parseLists(file.readText()) }.getOrElse {
             runCatching { file.copyTo(File(file.parentFile, "binder.json.bak"), overwrite = true) }
             emptyList()
-        }
-    }
-
-    private fun toJson(all: List<BinderList>): JSONObject {
-        val arr = JSONArray()
-        for (b in all) {
-            val items = JSONArray()
-            for (i in b.items) {
-                items.put(
-                    JSONObject().put("id", i.id).put("title", i.title).put("sub", i.sub).put("stage", i.stage)
-                        .put("rating", i.rating.toDouble()).put("note", i.note).put("added", i.added)
-                        .put("cover", i.cover).put("images", JSONArray(i.images))
-                )
-            }
-            arr.put(
-                JSONObject().put("id", b.id).put("name", b.name).put("kind", b.kind.name)
-                    .put("layout", b.layout.name).put("sort", b.sort.name).put("pinned", b.pinned)
-                    .put("created", b.created).put("items", items)
-            )
-        }
-        return JSONObject().put("format", "binder").put("version", 2).put("lists", arr)
-    }
-
-    /** Reads both the new format and the old version 0.1 file (a plain list). */
-    private fun parse(s: String): List<BinderList> {
-        val t = s.trim()
-        val arr = if (t.startsWith("[")) JSONArray(t) else JSONObject(t).getJSONArray("lists")
-        return List(arr.length()) { n ->
-            val o = arr.getJSONObject(n)
-            val its = o.getJSONArray("items")
-            val items = List(its.length()) { m ->
-                val i = its.getJSONObject(m)
-                val imgs = i.optJSONArray("images")
-                Item(
-                    id = i.getString("id"), title = i.getString("title"), sub = i.optString("sub"),
-                    stage = i.optInt("stage"), rating = i.optDouble("rating", 0.0).toFloat(),
-                    note = i.optString("note"), added = i.optLong("added"), cover = i.optInt("cover", -1),
-                    images = if (imgs == null) emptyList() else List(imgs.length()) { k -> imgs.getString(k) },
-                )
-            }
-            BinderList(
-                id = o.getString("id"), name = o.getString("name"),
-                kind = runCatching { Kind.valueOf(o.getString("kind")) }.getOrDefault(Kind.BOOKS),
-                layout = runCatching { Layout.valueOf(o.getString("layout")) }.getOrDefault(Layout.GRID),
-                sort = runCatching { Sort.valueOf(o.getString("sort")) }.getOrDefault(Sort.MANUAL),
-                pinned = o.optBoolean("pinned", false),
-                created = o.optLong("created"), items = items,
-            )
         }
     }
 }
