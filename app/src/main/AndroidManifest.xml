@@ -6,17 +6,44 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Binder"
         android:supportsRtl="true"
         android:theme="@style/Theme.Binder">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- The two launcher entries. Only one is enabled at a time: App name in More decides which
+             (see Launcher.kt). Both open MainActivity. -->
+        <activity-alias
+            android:name=".LauncherBinder"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="Binder"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherCatalog"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_catalog"
+            android:roundIcon="@mipmap/ic_launcher_catalog_round"
+            android:label="Catalog"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

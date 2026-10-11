@@ -11,7 +11,13 @@ class FetchFailure(message: String, val offline: Boolean = false) : Exception(me
 object Http {
     const val USER_AGENT = "Binder/1.0.0 (Android; personal list app)"
 
-    fun getBytes(url: String, maxBytes: Int = 8_000_000): ByteArray {
+    fun getBytes(url: String, maxBytes: Int = 8_000_000): ByteArray = request("GET", url, null, emptyMap(), maxBytes)
+
+    /** POSTs [json] and returns the answer as text. Same timeouts, size limit and messages as [get]. */
+    fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap(), maxBytes: Int = 8_000_000): String =
+        String(request("POST", url, json.toByteArray(Charsets.UTF_8), headers + ("Content-Type" to "application/json"), maxBytes), Charsets.UTF_8)
+
+    private fun request(method: String, url: String, body: ByteArray?, headers: Map<String, String>, maxBytes: Int): ByteArray {
         val c = try {
             URL(url).openConnection() as HttpURLConnection
         } catch (e: Exception) {
@@ -19,10 +25,16 @@ object Http {
         }
         c.connectTimeout = 8_000
         c.readTimeout = 10_000
-        c.requestMethod = "GET"
+        c.requestMethod = method
         c.setRequestProperty("User-Agent", USER_AGENT)
         c.setRequestProperty("Accept", "*/*")
+        for ((k, v) in headers) c.setRequestProperty(k, v)
         try {
+            if (body != null) {
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(body.size)
+                c.outputStream.use { it.write(body) }
+            }
             val code = c.responseCode
             if (code == 403 || code == 429) throw FetchFailure("The source is busy. Try again in a minute.")
             if (code !in 200..299) throw FetchFailure("The source answered with error $code.")

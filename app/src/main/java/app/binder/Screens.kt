@@ -61,7 +61,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +71,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -83,6 +86,17 @@ fun listMenu(vm: BinderViewModel, l: BinderList): SheetData = SheetData(
         add(Act("Rename") { vm.rename = l })
         add(Act("Move up") { vm.moveList(l.id, -1) })
         add(Act("Move down") { vm.moveList(l.id, 1) })
+        // a source switcher, only for kinds that can use more than one source in this build
+        val ready = Sources.readySources(l.kind)
+        if (ready.size > 1) {
+            val cur = Sources.sourceFor(l)
+            add(Act("Source: ${cur?.label ?: "none"}") {
+                vm.sheet = SheetData(
+                    "Source for ${l.name}",
+                    ready.map { src -> Act(if (src == cur) "${src.label} (current)" else src.label) { vm.setSource(l.id, src) } },
+                )
+            })
+        }
         if (vm.opts.home == HomeStyle.ROWS || vm.opts.home == HomeStyle.PINNED) {
             add(Act("Reorder by dragging") { vm.reorder = true })
         }
@@ -107,10 +121,9 @@ fun itemMenu(vm: BinderViewModel, l: BinderList, item: Item): SheetData = SheetD
 fun HomeScreen(vm: BinderViewModel) {
     val o = vm.opts
     val nav = vm.nav
-    var filter by rememberSaveable { mutableStateOf(0) }
     val lists = vm.lists
     val shown = lists.filter {
-        when (filter) {
+        when (vm.homeFilter) {
             1 -> !it.kind.isChecklist
             2 -> it.kind.isChecklist
             else -> true
@@ -130,23 +143,28 @@ fun HomeScreen(vm: BinderViewModel) {
                     "Make one for books, movies, albums or a quick checklist.",
                     "Create a ${o.listLower}",
                 ) { nav.push(Route.NewList) }
+            } else if (shown.isEmpty()) {
+                EmptyBlock(
+                    "No ${if (vm.homeFilter == 1) "media " else "checklist "}${o.listsLower}",
+                    "A filter is on. Change it in View, from the menu.",
+                    "Show all",
+                ) { vm.homeFilter = 0 }
             } else {
+                // a short note when a filter is hiding some of them
+                val note = if (vm.homeFilter == 0) null else "${shown.size} of ${lists.size} shown"
                 when (o.home) {
-                    HomeStyle.PINNED -> PinnedHome(vm, lists, pad, open, hold)
-                    HomeStyle.BENTO -> BentoHome(vm, lists, pad, open, hold)
+                    HomeStyle.PINNED -> PinnedHome(vm, shown, pad, open, hold)
+                    HomeStyle.BENTO -> BentoHome(vm, shown, pad, open, hold)
                     HomeStyle.TILES -> {
-                        HomeTitle(o.lists, lists.size)
-                        Chips(listOf("All", "Media", "Checklists"), filter) { filter = it }
+                        HomeTitle(o.lists, shown.size, note)
                         TilesHome(shown, pad, open, hold)
                     }
                     HomeStyle.ROWS -> {
-                        HomeTitle(o.lists, lists.size)
-                        Chips(listOf("All", "Media", "Checklists"), filter) { filter = it }
+                        HomeTitle(o.lists, shown.size, note)
                         RowsHome(vm, shown, pad, open, hold)
                     }
                     HomeStyle.STACKS -> {
-                        HomeTitle(o.lists, lists.size)
-                        Chips(listOf("All", "Media", "Checklists"), filter) { filter = it }
+                        HomeTitle(o.lists, shown.size, note)
                         StacksHome(vm, shown, pad, open, hold)
                     }
                 }
@@ -159,10 +177,10 @@ fun HomeScreen(vm: BinderViewModel) {
 }
 
 @Composable
-private fun HomeTitle(title: String, count: Int) {
+private fun HomeTitle(title: String, count: Int, note: String? = null) {
     Row(verticalAlignment = Alignment.Bottom) {
         Txt(title, 34, font = TitleFont)
-        Txt("$count", 14, P.mute, Modifier.padding(start = 8.dp, bottom = 6.dp))
+        Txt(note ?: "$count", 14, P.mute, Modifier.padding(start = 8.dp, bottom = 6.dp))
     }
 }
 
@@ -322,8 +340,10 @@ private fun ColumnScope.StacksHome(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(shown, key = { it.id }) { l ->
-            val arts = l.items.take(4).map { it.art() }
-            val more = l.items.size - 4
+            // only items that really have a picture; no gradient placeholders
+            val withPic = l.items.filter { it.images.isNotEmpty() }
+            val arts = withPic.take(4).map { it.art() }
+            val more = withPic.size - 4
             val slots = maxOf(1, arts.size + if (more > 0) 1 else 0)
             val rot = listOf(-4f, 2f, -2f, 3f, 3f)
             Column(
@@ -331,12 +351,23 @@ private fun ColumnScope.StacksHome(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(Modifier.width((78 + 54 * (slots - 1)).dp).height(118.dp)) {
-                    if (arts.isEmpty()) {
+                    if (arts.isEmpty() && l.items.isEmpty()) {
+                        // a truly empty list: the dashed plus
                         Box(
                             Modifier.offset(y = 5.dp).width(78.dp).height(108.dp).clip(RoundedCornerShape(14.dp))
                                 .border(2.dp, P.line, RoundedCornerShape(14.dp)),
                             contentAlignment = Alignment.Center,
                         ) { Icon(Ic.Plus, null, tint = P.mute, modifier = Modifier.size(22.dp)) }
+                    } else if (arts.isEmpty()) {
+                        // items, but none with a picture (checklists, or details not fetched yet): a plain tile
+                        Box(
+                            Modifier.offset(y = 5.dp).width(78.dp).height(108.dp).clip(RoundedCornerShape(14.dp))
+                                .background(P.surface),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (l.kind.isChecklist) ProgressRing(l.progress(), 56.dp)
+                            else Txt("${l.items.size}", 28, font = TitleFont)
+                        }
                     }
                     arts.forEachIndexed { i, a ->
                         ArtBox(
@@ -377,6 +408,51 @@ private fun BentoSmall(l: BinderList, modifier: Modifier, open: () -> Unit, hold
     }
 }
 
+/**
+ * The big card. The cover gets only the room that is really free above the text block, so it can never
+ * touch the number. No picture on the first item (or no room), nothing is drawn there.
+ */
+@Composable
+private fun BentoBig(big: BinderList, modifier: Modifier, open: () -> Unit, hold: () -> Unit) {
+    val first = big.items.firstOrNull()?.takeIf { it.images.isNotEmpty() }
+    Layout(
+        content = {
+            Column(Modifier.layoutId("text").padding(14.dp)) {
+                Txt("${big.items.size}", 44, font = TitleFont, ls = (-0.02).em)
+                Txt(big.name, 15, weight = FontWeight.Medium, maxLines = 1)
+                Txt("${big.doneCount()} done", 12, P.mute)
+            }
+            if (first != null) {
+                Box(Modifier.layoutId("cover").rotate(-6f)) {
+                    ArtBox(first.art(), Modifier.fillMaxSize().border(2.dp, P.surface, RoundedCornerShape(12.dp)), 12.dp, 300)
+                }
+            }
+        },
+        modifier = modifier.clip(RoundedCornerShape(24.dp)).background(P.surface).tapHold(open, hold),
+    ) { measurables, c ->
+        val w = c.maxWidth
+        val h = c.maxHeight
+        val text = measurables.first { it.layoutId == "text" }.measure(c.copy(minWidth = 0, minHeight = 0))
+        val pad = 18.dp.roundToPx()
+        val gap = 8.dp.roundToPx()
+        val tilt = 12.dp.roundToPx()          // the tilt makes the cover a little taller than it is
+        val free = h - text.height - pad - gap - tilt
+        val maxCoverH = 118.dp.roundToPx()
+        val cover = measurables.firstOrNull { it.layoutId == "cover" }
+        val placed = if (cover != null && free >= 48.dp.roundToPx()) {
+            var ch = minOf(free, maxCoverH)
+            var cw = ch * 84 / 118
+            val room = w - 2 * pad
+            if (cw > room) { cw = room; ch = cw * 118 / 84 }
+            cover.measure(Constraints.fixed(cw, ch))
+        } else null
+        layout(w, h) {
+            text.place(0, h - text.height)
+            placed?.place(pad, pad + tilt / 2)
+        }
+    }
+}
+
 @Composable
 private fun ColumnScope.BentoHome(
     vm: BinderViewModel, lists: List<BinderList>, pad: Int,
@@ -395,25 +471,7 @@ private fun ColumnScope.BentoHome(
     ) {
         item(key = "~top") {
             Row(Modifier.fillMaxWidth().height(230.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(P.surface)
-                        .tapHold({ open(big) }, { hold(big) })
-                ) {
-                    val first = big.items.firstOrNull()
-                    if (first != null) {
-                        ArtBox(
-                            first.art(),
-                            Modifier.offset(18.dp, 18.dp).width(84.dp).height(118.dp).rotate(-6f)
-                                .border(2.dp, P.surface, RoundedCornerShape(12.dp)),
-                            12.dp, 300,
-                        )
-                    }
-                    Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
-                        Txt("${big.items.size}", 44, font = TitleFont, ls = (-0.02).em)
-                        Txt(big.name, 15, weight = FontWeight.Medium, maxLines = 1)
-                        Txt("${big.doneCount()} done", 12, P.mute)
-                    }
-                }
+                BentoBig(big, Modifier.weight(1f).fillMaxHeight(), { open(big) }, { hold(big) })
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Coral).padding(14.dp)) {
                         Column(Modifier.align(Alignment.BottomStart)) {
@@ -501,8 +559,6 @@ private fun nextLabel(l: BinderList, item: Item): String {
     return "→ " + l.kind.stages[if (item.stage >= last) 0 else item.stage + 1]
 }
 
-private fun starText(r: Float): String = "★".repeat(r.toInt()) + if (r % 1f >= 0.5f) "½" else ""
-
 @Composable
 private fun StatusDot(done: Boolean, onClick: () -> Unit) {
     Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
@@ -582,7 +638,7 @@ private fun MediaRow(
                     )
                 }
                 if (handles) Grip()
-                else if (l.kind.hasRating && item.rating > 0f) Txt("★ ${fmtRating(item.rating)}", 13, Coral)
+                else if (l.kind.hasRating) RatingText(item.rating, 13)
             }
         }
     }
@@ -615,7 +671,7 @@ private fun SectionRow(
                         Txt(item.title, 17, if (done) P.mute else P.fg, font = TitleFont, maxLines = 1)
                         if (item.sub.isNotBlank()) Txt(item.sub, 12, P.mute, maxLines = 1)
                     }
-                    if (!handles && l.kind.hasRating && item.rating > 0f) Txt(starText(item.rating), 13, Coral)
+                    if (!handles && l.kind.hasRating) RatingText(item.rating, 13)
                 }
                 if (handles) Grip()
             }
@@ -653,8 +709,8 @@ private fun GridCell(l: BinderList, item: Item, px: Int, open: (Item) -> Unit, h
             Txt(item.title, 13, modifier = Modifier.padding(top = 6.dp), weight = FontWeight.Medium, maxLines = 2, lh = 15.sp)
             if (item.sub.isNotBlank()) Txt(item.sub, 12, P.mute, maxLines = 1)
         }
-        if (Under.RATING in l.under && l.kind.hasRating && item.rating > 0f) {
-            Txt(starText(item.rating), 12, Coral, Modifier.padding(top = 2.dp))
+        if (Under.RATING in l.under && l.kind.hasRating) {
+            RatingText(item.rating, 12, Modifier.padding(top = 2.dp))
         }
         if (Under.ADDED in l.under) Txt(dateLabel(item.added), 11, P.mute, Modifier.padding(top = 2.dp))
     }
@@ -763,6 +819,29 @@ private fun ItemsBody(
         ) {
             items(shown, key = { it.id }) { item -> GridCell(l, item, if (l.columns == 2) 600 else 400, open, hold) }
         }
+    }
+}
+
+/** View options for the Binds (home) screen: layout, header and which kinds to show. Opened from the Menu. */
+@Composable
+fun BoxScope.HomeViewSheet(vm: BinderViewModel) {
+    val o = vm.opts
+    val close = { vm.homeView = false }
+    SheetFrame(close) {
+        Txt("View", 22, weight = FontWeight.Medium)
+        Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+            Cap("SHOW")
+            FlowChips(listOf("All", "Media", "Checklists"), vm.homeFilter) { vm.homeFilter = it }
+            Cap("LAYOUT")
+            FlowChips(HomeStyle.entries.map { it.label }, o.home.ordinal) { i -> vm.change { it.copy(home = HomeStyle.entries[i]) } }
+            Cap("HEADER")
+            FlowChips(HeaderStyle.entries.map { it.label }, o.header.ordinal) { i -> vm.change { it.copy(header = HeaderStyle.entries[i]) } }
+            Txt(
+                "Your ${o.listsLower} keep the order you drag them into. The filter only changes what is shown.",
+                12, P.mute, Modifier.padding(top = 14.dp, bottom = 12.dp),
+            )
+        }
+        BigButton("Done") { close() }
     }
 }
 
@@ -898,7 +977,7 @@ private fun AddBar(hint: String, onAdd: (String) -> Unit, onFull: () -> Unit) {
 
 // ───────────────────────── 3 · Item (add / edit) ─────────────────────────
 
-private fun openLink(ctx: android.content.Context, url: String) {
+fun openLink(ctx: android.content.Context, url: String) {
     runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
@@ -986,14 +1065,14 @@ fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
                 Box(Modifier.rotate(-3f).clip(CircleShape).background(Coral).padding(horizontal = 14.dp, vertical = 7.dp)) {
                     Txt(l.kind.stages[stage], 13, Color(0xFF111111), weight = FontWeight.Medium)
                 }
-                if (l.kind.hasRating) Stars(rating) { rating = it }
+                if (l.kind.hasRating) RatingInput(vm, rating) { rating = it }
             }
         } else if (l.kind.square) {
             Column(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 CoverView(shownTitle, art, Modifier.width(168.dp), size = 15, px = 800, square = true)
                 if (sub.isNotBlank()) Txt(sub, 20, weight = FontWeight.Medium, modifier = Modifier.padding(top = 14.dp), maxLines = 1)
                 if (info.isNotEmpty()) Txt(info, 14, P.mute, Modifier.padding(top = 2.dp), maxLines = 1)
-                if (l.kind.hasRating) Stars(rating) { rating = it }
+                if (l.kind.hasRating) RatingInput(vm, rating) { rating = it }
             }
         } else {
             Row(
@@ -1005,7 +1084,7 @@ fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
                 Column(Modifier.weight(1f)) {
                     if (sub.isNotBlank()) Txt(sub, 16, weight = FontWeight.Medium, maxLines = 2)
                     if (info.isNotEmpty()) Txt(info, 14, P.mute, Modifier.padding(top = 2.dp), maxLines = 2)
-                    if (l.kind.hasRating) Stars(rating) { rating = it }
+                    if (l.kind.hasRating) RatingInput(vm, rating) { rating = it }
                 }
             }
         }
@@ -1016,9 +1095,9 @@ fun ItemScreen(vm: BinderViewModel, listId: String, itemId: String?) {
                 12, P.mute, Modifier.padding(bottom = 10.dp),
             )
         }
-        if (existing != null && (existing.year.isNotEmpty() || existing.genre.isNotEmpty() || existing.sourceName.isNotEmpty())) {
+        if (existing != null && (existing.year.isNotEmpty() || existing.genre.isNotEmpty() || existing.extra.isNotEmpty() || existing.sourceName.isNotEmpty())) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(horizontal = 16.dp, vertical = 4.dp)) {
-                val rows = listOf("Released" to existing.year, "Genre" to existing.genre, "Source" to existing.sourceName)
+                val rows = listOf("Released" to existing.year, "Genre" to existing.genre, l.kind.extraLabel to existing.extra, "Source" to existing.sourceName)
                     .filter { it.second.isNotEmpty() }
                 rows.forEachIndexed { i, (k, v) ->
                     if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(P.line))

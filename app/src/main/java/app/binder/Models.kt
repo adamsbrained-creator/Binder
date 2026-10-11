@@ -10,9 +10,20 @@ enum class Sort(val label: String) {
     MANUAL("Manual"), NEWEST("Newest"), TITLE("A–Z"), RATING("Rating")
 }
 
-/** Where details can be fetched from. Only Apple Music is wired up in 1.0.0. */
-enum class Source(val label: String, val openLabel: String) {
+/**
+ * Where details can be fetched from. [needsKey] sources only work in a build that has their key
+ * (see Keys in Meta.kt); without it they say so and are hidden in More.
+ */
+enum class Source(val label: String, val openLabel: String, val needsKey: Boolean = false) {
     APPLE("Apple Music", "Open in Apple Music"),
+    TMDB("TMDB", "Open on TMDB", needsKey = true),
+    RAWG("RAWG", "Open on RAWG", needsKey = true),
+    OPENLIBRARY("Open Library", "Open on Open Library"),
+    GOOGLEBOOKS("Google Books", "Open in Google Books"),
+    ANILIST("AniList", "Open on AniList"),
+    NOMINATIM("OpenStreetMap", "Open on OpenStreetMap"),
+    WIKIPEDIA("Wikipedia", "Open on Wikipedia"),
+    WEB("Web page", "Open page"),     // any other pasted link (Open Graph tags); not a source you pick for a list
 }
 
 /** The kinds of list you can start from. Add a new one here and it shows up everywhere. */
@@ -24,16 +35,19 @@ enum class Kind(
     val subLabel: String,
     val stages: List<String>,
     val hasRating: Boolean,
-    val square: Boolean = false, // album and game covers are square
-    val source: Source? = null,  // where details come from, if anywhere
+    val square: Boolean = false,                 // album and game covers are square
+    val sources: List<Source> = emptyList(),     // where details can come from; the first one is the default
+    val extraLabel: String = "Details",          // what Item.extra holds for this kind (runtime, seasons, pages ...)
 ) {
-    BOOKS("Books", "Title, author", "books", "book", "Author", listOf("To read", "Reading", "Done"), true),
-    MOVIES("Movies", "Title, year", "movies", "movie", "Year", listOf("To watch", "Watching", "Watched"), true),
-    SERIES("Series", "Seasons", "series", "series", "Seasons", listOf("To watch", "Watching", "Watched"), true),
-    ALBUMS("Albums", "Artist, year", "albums", "album", "Artist", listOf("To listen", "Listening", "Heard"), true, square = true, source = Source.APPLE),
-    GAMES("Games", "Platform", "games", "game", "Platform", listOf("To play", "Playing", "Played"), true, square = true),
-    PLACES("Places", "City", "places", "place", "City", listOf("Want to go", "Planned", "Visited"), true),
-    ANYTHING("Anything", "Your own", "things", "thing", "Details", listOf("Idea", "In progress", "Done"), true),
+    BOOKS("Books", "Title, author", "books", "book", "Author", listOf("To read", "Reading", "Done"), true, sources = listOf(Source.OPENLIBRARY, Source.GOOGLEBOOKS), extraLabel = "Pages"),
+    MANGA("Manga", "Title, author", "manga", "manga", "Author", listOf("To read", "Reading", "Done"), true, sources = listOf(Source.ANILIST), extraLabel = "Volumes"),
+    COMICS("Comics", "Title, writer", "comics", "comic", "Writer", listOf("To read", "Reading", "Done"), true, sources = listOf(Source.GOOGLEBOOKS), extraLabel = "Pages"),
+    MOVIES("Movies", "Title, year", "movies", "movie", "Year", listOf("To watch", "Watching", "Watched"), true, sources = listOf(Source.TMDB), extraLabel = "Runtime"),
+    SERIES("Series", "Seasons", "series", "series", "Seasons", listOf("To watch", "Watching", "Watched"), true, sources = listOf(Source.TMDB, Source.ANILIST), extraLabel = "Episodes"),
+    ALBUMS("Albums", "Artist, year", "albums", "album", "Artist", listOf("To listen", "Listening", "Heard"), true, square = true, sources = listOf(Source.APPLE)),
+    GAMES("Games", "Platform", "games", "game", "Platform", listOf("To play", "Playing", "Played"), true, square = true, sources = listOf(Source.RAWG), extraLabel = "Platforms"),
+    PLACES("Places", "City", "places", "place", "City", listOf("Want to go", "Planned", "Visited"), true, sources = listOf(Source.NOMINATIM), extraLabel = "Address"),
+    ANYTHING("Anything", "Your own", "things", "thing", "Details", listOf("Idea", "In progress", "Done"), true, sources = listOf(Source.WIKIPEDIA)),
     CHECKLIST("Checklist", "Items, done", "items", "item", "", listOf("To do", "Done"), false);
 
     val isChecklist: Boolean get() = this == CHECKLIST
@@ -61,6 +75,7 @@ data class Item(
     val genre: String = "",
     val description: String = "",
     val detailsPending: Boolean = false, // saved offline, details still to be fetched
+    val extra: String = "",              // optional: runtime, seasons, pages, volumes, platforms ... (see Kind.extraLabel)
 )
 
 data class BinderList(
@@ -74,6 +89,7 @@ data class BinderList(
     val created: Long = System.currentTimeMillis(),
     val columns: Int = 3,                         // 2, 3 or 4 in the grid layout
     val under: Set<Under> = setOf(Under.TITLE, Under.RATING),
+    val source: Source? = null,                   // optional: which source to fetch from (null = the first one the kind offers)
 )
 
 fun BinderList.doneCount(): Int = items.count { it.stage == kind.stages.lastIndex }
@@ -117,11 +133,6 @@ enum class FontChoice(val label: String) {
     INSTRUMENT("Outfit + Instrument Serif"), INSTSANS("Instrument Sans"), WORKSANS("Work Sans")
 }
 
-/** The word used for "lists" everywhere in the app. */
-enum class ListWord(val plural: String, val single: String) {
-    LISTS("Lists", "List"), BINDS("Binds", "Bind"), CATALOGS("Catalogs", "Catalog"), SLEEVES("Sleeves", "Sleeve")
-}
-
 data class Opts(
     val theme: String = "system",
     val appName: String = "binder", // "binder" or "catalog"
@@ -132,12 +143,18 @@ data class Opts(
     val add: AddStyle = AddStyle.SHEET,
     val itemPage: ItemPage = ItemPage.STANDARD,
     val fetch: Boolean = false,           // fetch details from the internet (off = no network calls at all)
-    val listName: ListWord = ListWord.LISTS,
     val emptySlots: Boolean = true,       // dashed "+" slots in empty places
+    val ratingStyle: RatingStyle = RatingStyle.STARS, // saved as the optional key "ratingStyle"
 )
 
-/** "Lists" / "list" / "List" / "lists" in the word the person picked. */
-val Opts.lists: String get() = listName.plural
-val Opts.list: String get() = listName.single
-val Opts.listsLower: String get() = listName.plural.lowercase()
-val Opts.listLower: String get() = listName.single.lowercase()
+/** True when the app is set to Catalog (name, icon and wording all follow this one switch). */
+val Opts.isCatalog: Boolean get() = appName == "catalog"
+
+/** "Binder" or "Catalog": the app name as shown (wordmark, About, label). */
+val Opts.appLabel: String get() = if (isCatalog) "Catalog" else "Binder"
+
+/** The word for one list and for many: Bind/Binds, or Catalog/Catalogs. Follows [Opts.appName]. */
+val Opts.lists: String get() = if (isCatalog) "Catalogs" else "Binds"
+val Opts.list: String get() = if (isCatalog) "Catalog" else "Bind"
+val Opts.listsLower: String get() = lists.lowercase()
+val Opts.listLower: String get() = list.lowercase()

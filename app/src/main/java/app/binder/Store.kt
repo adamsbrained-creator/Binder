@@ -44,6 +44,8 @@ class Nav {
 class Act(val label: String, val danger: Boolean = false, val run: () -> Unit)
 class SheetData(val title: String, val acts: List<Act>)
 class Undo(val label: String, val run: () -> Unit)
+/** A rating being set in the sheet: where it starts and where to send each change. */
+class RatingEdit(val value: Float, val onChange: (Float) -> Unit)
 
 class BinderViewModel(app: Application) : AndroidViewModel(app) {
     private val ctx: Context = app
@@ -62,13 +64,21 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
     var reorder by mutableStateOf(false)
     var drawer by mutableStateOf(false)
     var menu by mutableStateOf(false)
+    var ratingEdit by mutableStateOf<RatingEdit?>(null) // the number style's rating sheet
+    var homeView by mutableStateOf(false)   // the View sheet of the Binds screen
+    var homeFilter by mutableStateOf(0)     // 0 all, 1 media, 2 checklists (kept while the app is open)
     var sheet by mutableStateOf<SheetData?>(null)
     var quick by mutableStateOf<String?>(null)
     var rename by mutableStateOf<BinderList?>(null)
     var undo by mutableStateOf<Undo?>(null)
 
     init {
-        nav.onChange = { reorder = false; drawer = false; menu = false; sheet = null; quick = null }
+        nav.onChange = { reorder = false; drawer = false; menu = false; homeView = false; ratingEdit = null; sheet = null; quick = null }
+        // the build's API keys (blank = that source is unavailable)
+        Keys.tmdb = BuildConfig.TMDB_KEY
+        Keys.rawg = BuildConfig.RAWG_KEY
+        // A restored backup or an older choice ends up matching the launcher entry.
+        Launcher.sync(ctx, opts.isCatalog)
     }
 
     // ───────── options ─────────
@@ -87,19 +97,21 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             add = pick("add", AddStyle.entries, d.add),
             itemPage = pick("itemPage", ItemPage.entries, d.itemPage),
             fetch = prefs.getBoolean("fetch", d.fetch),
-            listName = pick("listName", ListWord.entries, d.listName),
             emptySlots = prefs.getBoolean("emptySlots", d.emptySlots),
+            ratingStyle = pick("ratingStyle", RatingStyle.entries, d.ratingStyle),
         )
     }
 
     fun change(f: (Opts) -> Opts) {
-        val o = f(opts)
+        val before = opts
+        val o = f(before)
         opts = o
+        if (o.isCatalog != before.isCatalog) Launcher.sync(ctx, o.isCatalog)
         prefs.edit()
             .putString("theme", o.theme).putString("appName", o.appName).putString("font", o.font.name)
             .putString("header", o.header.name).putString("nav", o.nav.name).putString("home", o.home.name)
             .putString("add", o.add.name).putString("itemPage", o.itemPage.name)
-            .putBoolean("fetch", o.fetch).putString("listName", o.listName.name).putBoolean("emptySlots", o.emptySlots)
+            .putBoolean("fetch", o.fetch).putBoolean("emptySlots", o.emptySlots).putString("ratingStyle", o.ratingStyle.name)
             .apply()
     }
 
@@ -203,12 +215,23 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Saves a search result as a normal item. The cover is downloaded first; if that fails the item is still saved. */
     fun addFound(listId: String, f: Found, extra: (Item) -> Item = { it }, done: () -> Unit) {
+        val kind = lists.firstOrNull { it.id == listId }?.kind
         viewModelScope.launch {
-            val cover = if (f.coverUrl.isEmpty()) null else withContext(Dispatchers.IO) { downloadCover(ctx, f.coverUrl) }
-            saveItem(listId, extra(f.toItem(listOfNotNull(cover))))
+            // a search result is thin: ask the same source for the rest (runtime, seasons, genres ...); if that fails keep what we have
+            val full = withContext(Dispatchers.IO) { enrich(f, kind) }
+            val cover = if (full.coverUrl.isEmpty()) null else withContext(Dispatchers.IO) { downloadCover(ctx, full.coverUrl) }
+            saveItem(listId, extra(full.toItem(listOfNotNull(cover))))
             done()
         }
     }
+
+    private fun enrich(f: Found, kind: Kind?): Found {
+        val src = Sources.byLabel(f.sourceName) ?: return f
+        return runCatching { Sources.forSource(src, kind).details(f) }.getOrDefault(f)
+    }
+
+    /** Which source a list fetches from (saved as the optional key "source"). */
+    fun setSource(listId: String, s: Source) = edit(listId) { it.copy(source = s) }
 
     /** No connection (or the lookup failed): keep what was typed and fetch the details later. */
     fun addPending(listId: String, title: String) {
@@ -220,7 +243,7 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
     /** Looks up items that were saved while offline. Runs when a list opens, only if fetching is on. */
     fun retryPending(listId: String) {
         val l = lists.firstOrNull { it.id == listId } ?: return
-        val provider = Sources.forKind(l.kind) ?: return
+        val provider = Sources.forList(l) ?: return
         val todo = l.items.filter { it.detailsPending }
         if (!opts.fetch || todo.isEmpty() || retrying) return
         retrying = true
@@ -241,8 +264,9 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
                         if (failure == null) markFound(listId, item.id, null)
                         continue
                     }
-                    val cover = if (f.coverUrl.isEmpty()) null else withContext(Dispatchers.IO) { downloadCover(ctx, f.coverUrl) }
-                    markFound(listId, item.id, f.toItem(listOfNotNull(cover)))
+                    val full = withContext(Dispatchers.IO) { enrich(f, l.kind) }
+                    val cover = if (full.coverUrl.isEmpty()) null else withContext(Dispatchers.IO) { downloadCover(ctx, full.coverUrl) }
+                    markFound(listId, item.id, full.toItem(listOfNotNull(cover)))
                 }
             } finally {
                 retrying = false
@@ -258,7 +282,7 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             else cur.copy(
                 sub = cur.sub.ifBlank { f.sub }, images = cur.images.ifEmpty { f.images },
                 sourceName = f.sourceName, sourceId = f.sourceId, sourceUrl = f.sourceUrl,
-                year = f.year, genre = f.genre, description = f.description, detailsPending = false,
+                year = f.year, genre = f.genre, description = f.description, extra = f.extra, detailsPending = false,
             )
         })
     }

@@ -58,7 +58,7 @@ fun AppHeader(vm: BinderViewModel) {
     val o = vm.opts
     val h = if (o.nav == NavStyle.DRAWER && (o.header == HeaderStyle.WORDMARK || o.header == HeaderStyle.CIRCLES))
         HeaderStyle.MENU_LEFT else o.header
-    val name = o.appName
+    val name = o.appLabel.lowercase()
     val search = { vm.nav.push(Route.Search) }
     val more = { vm.nav.push(Route.More) }
     val menu = { vm.drawer = true }
@@ -241,9 +241,9 @@ fun BoxScope.NavBar(vm: BinderViewModel, cur: Route) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Icon(Ic.Search, "Search", tint = P.mute, modifier = Modifier.size(20.dp))
-                    Txt("Search ${vm.opts.appName}…", 14, P.mute, maxLines = 1)
+                    Txt("Search ${vm.opts.appLabel.lowercase()}…", 14, P.mute, maxLines = 1)
                 }
-                IconBtn(Ic.List, "Lists") { vm.nav.root(Route.Home) }
+                IconBtn(Ic.List, vm.opts.lists) { vm.nav.root(Route.Home) }
                 IconBtn(Ic.Dots, "More") { vm.nav.root(Route.More) }
             }
             RoundPlus(52.dp) { newList() }
@@ -303,7 +303,7 @@ fun BoxScope.Drawer(vm: BinderViewModel, cur: Route) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Txt(vm.opts.appName, 24, weight = FontWeight.Medium, ls = (-0.02).em)
+                Txt(vm.opts.appLabel.lowercase(), 24, weight = FontWeight.Medium, ls = (-0.02).em)
             }
             DrawerItem(Ic.List, vm.opts.lists, cur == Route.Home) { vm.drawer = false; vm.nav.root(Route.Home) }
             DrawerItem(Ic.Search, "Search", cur == Route.Search) { vm.drawer = false; vm.nav.root(Route.Search) }

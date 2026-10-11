@@ -1,0 +1,110 @@
+# The build to install on your phone. Runs on every push to main/master, or press "Run workflow".
+# Every APK is signed with YOUR key (from the repository secrets), so a new APK installs over the
+# old one and keeps your lists. No uninstalling.
+#
+# First time only: run "Create signing key" and add the 4 secrets it tells you about.
+# Result: Actions > the run > Artifacts > binder-apk (a zip with Binder.apk in it).
+name: Binder (signed)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # signing (from "Create signing key")
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      # sources that need a key (optional; a missing one is just hidden in the app)
+      TMDB_KEY: ${{ secrets.TMDB_KEY }}
+      RAWG_KEY: ${{ secrets.RAWG_KEY }}
+      # rises with every run, so each APK counts as newer than the last (Android refuses older ones)
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the signing secrets
+        run: |
+          missing=""
+          for n in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!n}" ]; then missing="$missing $n"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Run the 'Create signing key' workflow once, then add the secrets it lists (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Find the project
+        run: |
+          f=$(find . -maxdepth 3 -name 'settings.gradle*' -not -path './.git/*' | head -n1)
+          if [ -z "$f" ]; then
+            echo "::error::No settings.gradle.kts found. Files in the repo:"
+            find . -maxdepth 3 -not -path './.git/*' | head -60
+            exit 1
+          fi
+          echo "PROJ=$(dirname "$f")" >> "$GITHUB_ENV"
+          echo "Project folder: $(dirname "$f")"
+
+      - name: Restore the signing key
+        run: |
+          echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/binder.jks"
+          keytool -list -keystore "$RUNNER_TEMP/binder.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null \
+            || { echo "::error::The key could not be opened. Check that the 4 secrets were copied exactly."; exit 1; }
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/binder.jks" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build signed APK
+        working-directory: ${{ env.PROJ }}
+        run: gradle assembleRelease --stacktrace
+
+      # Shows the key's fingerprint. If this line is the same on every build, updates will install.
+      - name: Check the signature
+        run: |
+          apk=$(ls "$PROJ"/app/build/outputs/apk/release/*.apk | head -n1)
+          tool=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)apksigner
+          "$tool" verify --print-certs "$apk" | tee "$RUNNER_TEMP/cert.txt"
+          grep -q "SHA-256" "$RUNNER_TEMP/cert.txt"
+          mkdir -p dist
+          cp "$apk" dist/Binder.apk
+          {
+            echo "### Signed build #${{ github.run_number }} (version code ${{ github.run_number }})"
+            grep "SHA-256" "$RUNNER_TEMP/cert.txt" | head -n1
+            echo
+            echo "Same fingerprint as the last build means it installs over the old one."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binder-apk
+          path: dist/Binder.apk
+          if-no-files-found: error
+
+      # After the APK is saved, so a failing test never costs you the build.
+      - name: Run unit tests
+        working-directory: ${{ env.PROJ }}
+        run: gradle testDebugUnitTest --stacktrace
+
+      - name: Upload error reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: ${{ env.PROJ }}/app/build/reports
+          if-no-files-found: ignore

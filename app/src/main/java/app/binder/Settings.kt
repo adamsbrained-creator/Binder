@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.net.Uri
@@ -179,28 +180,44 @@ fun MoreScreen(vm: BinderViewModel) {
                 vm.change { it.copy(fetch = v) }
             }
             Txt(
-                if (o.fetch) "On: in an Albums list, typing a title or pasting an Apple Music link looks up the cover and details."
-                else "Off: Binder makes no internet calls at all.",
+                if (o.fetch) "On: in a ${o.listLower} with a source, typing a title or pasting a link looks up the cover and details. Only what you type or paste is sent."
+                else "Off: ${o.appLabel} makes no internet calls at all.",
                 12, P.mute, Modifier.padding(top = 6.dp),
             )
 
             Cap("SOURCES")
+            // only sources this build can really use; one that needs a key the build doesn't have is hidden
+            val rows = Kind.entries.filter { it.sources.isNotEmpty() }.mapNotNull { k ->
+                val ready = Sources.readySources(k)
+                if (ready.isEmpty()) null else k.label to ready.joinToString(", ") { it.label }
+            }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(P.surface).padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Txt("Albums", 15)
-                    Txt("Apple Music", 15, P.mute)
+                rows.forEachIndexed { i, (k, v) ->
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(P.line))
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Txt(k, 15)
+                        Txt(v, 15, P.mute, Modifier.padding(start = 16.dp), align = TextAlign.End)
+                    }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(P.line))
-                Txt("Movies, series, games and books are coming later.", 13, P.mute, Modifier.padding(vertical = 12.dp))
+                Txt(
+                    "Paste a link from one of these, or any web page, to fill in the title and picture. Your own rating is never replaced.",
+                    13, P.mute, Modifier.padding(vertical = 12.dp),
+                )
             }
 
             Cap("APP NAME")
             Seg(listOf("Binder", "Catalog"), if (o.appName == "catalog") 1 else 0) { i ->
                 vm.change { it.copy(appName = if (i == 1) "catalog" else "binder") }
             }
-            Txt("Only changes the name and logo text at the top.", 12, P.mute, Modifier.padding(top = 6.dp))
-
-            OptionGroup("NAME FOR LISTS", ListWord.entries, o.listName, { it.plural }) { v -> vm.change { it.copy(listName = v) } }
+            Txt(
+                "Changes the name, the icon, the label under the icon and the word for your ${o.listsLower}.",
+                12, P.mute, Modifier.padding(top = 6.dp),
+            )
+            Txt(
+                "Your launcher may take a moment to update, and you may need to re-add the icon to your home screen.",
+                12, P.mute, Modifier.padding(top = 4.dp),
+            )
 
             Cap("THEME")
             val themes = listOf("system", "light", "dark")
@@ -208,12 +225,28 @@ fun MoreScreen(vm: BinderViewModel) {
                 vm.change { it.copy(theme = themes[i]) }
             }
 
-            OptionGroup("HOME LAYOUT", HomeStyle.entries, o.home, { it.label }) { v -> vm.change { it.copy(home = v) } }
-            OptionGroup("HEADER", HeaderStyle.entries, o.header, { it.label }) { v -> vm.change { it.copy(header = v) } }
             OptionGroup("NAVIGATION", NavStyle.entries, o.nav, { it.label }) { v -> vm.change { it.copy(nav = v) } }
             OptionGroup("ADDING ITEMS", AddStyle.entries, o.add, { it.label }) { v -> vm.change { it.copy(add = v) } }
             Txt("Tap the menu button to open the menu. Press and hold it to pop out a + for adding.", 12, P.mute, Modifier.padding(top = 6.dp))
             OptionGroup("ITEM PAGE", ItemPage.entries, o.itemPage, { it.label }) { v -> vm.change { it.copy(itemPage = v) } }
+            Cap("RATING STYLE")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RatingStyle.entries.forEach { st ->
+                    val on = o.ratingStyle == st
+                    Column(
+                        Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(P.surface)
+                            .border(2.dp, if (on) Coral else Color.Transparent, RoundedCornerShape(22.dp))
+                            .clickable { vm.change { it.copy(ratingStyle = st) } }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Txt(st.label, 15, weight = if (on) FontWeight.Medium else FontWeight.Normal)
+                        RatingText(4.75f, 14, style = st)
+                    }
+                }
+            }
+            Txt("The number style shows “4.75 ★” and sets the rating from 0 to 5 in steps of 0.25.", 12, P.mute, Modifier.padding(top = 6.dp))
+
             OptionGroup("FONT", FontChoice.entries, o.font, { it.label }) { v -> vm.change { it.copy(font = v) } }
 
             Cap("EMPTY SLOTS")
@@ -244,9 +277,9 @@ fun MoreScreen(vm: BinderViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Txt("${o.appName.replaceFirstChar { it.uppercase() }} ${BuildConfig.VERSION_NAME}", 15, weight = FontWeight.Medium)
+                    Txt("${o.appLabel} ${BuildConfig.VERSION_NAME}", 15, weight = FontWeight.Medium)
                     Txt(
-                        "Lists and pictures stay on this phone. Only the text you search for is sent when fetching is on.",
+                        "${o.lists} and pictures stay on this phone. Only the text you search for is sent when fetching is on.",
                         13, P.mute, Modifier.padding(top = 4.dp),
                     )
                 }
@@ -262,7 +295,7 @@ fun MoreScreen(vm: BinderViewModel) {
             onDismissRequest = { pending = null },
             containerColor = P.bg,
             title = { Txt("Restore backup", 20) },
-            text = { Txt("Replace everything with the backup, or add its lists to what you have now?", 14, P.mute) },
+            text = { Txt("Replace everything with the backup, or add its ${o.listsLower} to what you have now?", 14, P.mute) },
             confirmButton = {
                 TextButton({
                     pending = null
@@ -272,7 +305,7 @@ fun MoreScreen(vm: BinderViewModel) {
             dismissButton = {
                 TextButton({
                     pending = null
-                    vm.importZip(p, replace = false) { ok -> msg = if (ok) "Lists added." else "That file is not a backup." }
+                    vm.importZip(p, replace = false) { ok -> msg = if (ok) "${o.lists} added." else "That file is not a backup." }
                 }) { Txt("Add", 15, P.fg) }
             },
         )

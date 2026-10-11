@@ -66,4 +66,35 @@ class PersistTest {
         val j = """{"format":"binder","version":3,"lists":[{"id":"q","name":"X","kind":"BOOKS","columns":9,"items":[]}]}"""
         assertEquals(4, parseLists(j).single().columns)
     }
+
+    @Test fun sourceAndExtraAreOptionalKeys() {
+        val item = Item(id = "i", title = "The Matrix", sourceName = "TMDB", extra = "2 h 16 min")
+        val list = BinderList(id = "L", name = "Films", kind = Kind.MOVIES, source = Source.TMDB, items = listOf(item))
+        val json = listsToJson(listOf(list))
+        val back = parseLists(json.toString()).single()
+        assertEquals(Source.TMDB, back.source)
+        assertEquals("2 h 16 min", back.items.single().extra)
+        // not written at all when empty, so files stay as 1.0.0 wrote them
+        val plain = listsToJson(listOf(BinderList(id = "P", name = "Plain", kind = Kind.BOOKS, items = listOf(Item(id = "j", title = "x"))))).getJSONArray("lists").getJSONObject(0)
+        assertFalse(plain.has("source"))
+        assertFalse(plain.getJSONArray("items").getJSONObject(0).has("extra"))
+    }
+
+    @Test fun anOldFileHasNoSourceOrExtra() {
+        val back = parseLists(v05).single()
+        assertEquals(null, back.source)
+        assertEquals("", back.items.single().extra)
+    }
+
+    @Test fun anUnknownSourceNameIsIgnored() {
+        val j = """{"format":"binder","version":3,"lists":[{"id":"q","name":"X","kind":"BOOKS","source":"SOMETHING_NEW","items":[]}]}"""
+        assertEquals(null, parseLists(j).single().source)
+    }
+
+    @Test fun existingKeysAreStillWritten() {
+        val o = listsToJson(listOf(BinderList(id = "L", name = "A", kind = Kind.ALBUMS, items = listOf(Item(id = "i", title = "T"))))).getJSONArray("lists").getJSONObject(0)
+        for (k in listOf("id", "name", "kind", "layout", "sort", "pinned", "created", "columns", "under", "items")) assertTrue(k, o.has(k))
+        val i = o.getJSONArray("items").getJSONObject(0)
+        for (k in listOf("id", "title", "sub", "stage", "rating", "note", "added", "cover", "images", "sourceName", "sourceId", "sourceUrl", "year", "genre", "description", "detailsPending")) assertTrue(k, i.has(k))
+    }
 }

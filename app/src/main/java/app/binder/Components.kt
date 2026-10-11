@@ -456,32 +456,6 @@ fun CoverView(
     }
 }
 
-/** Tap the left half of a star for a half-star, the right half for a full one. Tap the same value again to clear. */
-@Composable
-fun Stars(value: Float, onChange: (Float) -> Unit) {
-    val w: Dp = 34.dp
-    Row {
-        for (i in 0 until 5) {
-            val fill = (value - i).coerceIn(0f, 1f)
-            Box(
-                Modifier.size(w).pointerInput(value) {
-                    detectTapGestures { off ->
-                        val v = i + if (off.x < size.width / 2f) 0.5f else 1f
-                        onChange(if (v == value) 0f else v)
-                    }
-                }
-            ) {
-                Txt("★", 28, P.mute.copy(alpha = 0.3f), Modifier.fillMaxSize(), align = TextAlign.Center)
-                if (fill > 0f) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(fill).clipToBounds()) {
-                        Txt("★", 28, Coral, Modifier.requiredWidth(w), align = TextAlign.Center)
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 fun Progress(frac: Float, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(P.line)) {
@@ -632,7 +606,5 @@ fun BoxScope.SheetFrame(onClose: () -> Unit, content: @Composable ColumnScope.()
         }
     }
 }
-
-fun fmtRating(r: Float): String = if (r % 1f == 0f) r.toInt().toString() else r.toString()
 
 fun dateLabel(ms: Long): String = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(ms))

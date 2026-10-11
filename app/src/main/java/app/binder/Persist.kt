@@ -17,6 +17,7 @@ fun listsToJson(all: List<BinderList>): JSONObject {
                     .put("sourceName", i.sourceName).put("sourceId", i.sourceId).put("sourceUrl", i.sourceUrl)
                     .put("year", i.year).put("genre", i.genre).put("description", i.description)
                     .put("detailsPending", i.detailsPending)
+                    .apply { if (i.extra.isNotEmpty()) put("extra", i.extra) }
             )
         }
         arr.put(
@@ -24,6 +25,7 @@ fun listsToJson(all: List<BinderList>): JSONObject {
                 .put("layout", b.layout.name).put("sort", b.sort.name).put("pinned", b.pinned)
                 .put("created", b.created).put("columns", b.columns)
                 .put("under", JSONArray(b.under.map { it.name })).put("items", items)
+                .apply { if (b.source != null) put("source", b.source.name) }
         )
     }
     return JSONObject().put("format", "binder").put("version", 3).put("lists", arr)
@@ -47,7 +49,7 @@ fun parseLists(s: String): List<BinderList> {
                 sourceName = i.optString("sourceName"), sourceId = i.optString("sourceId"),
                 sourceUrl = i.optString("sourceUrl"), year = i.optString("year"),
                 genre = i.optString("genre"), description = i.optString("description"),
-                detailsPending = i.optBoolean("detailsPending", false),
+                detailsPending = i.optBoolean("detailsPending", false), extra = i.optString("extra"),
             )
         }
         val underArr = o.optJSONArray("under")
@@ -61,6 +63,7 @@ fun parseLists(s: String): List<BinderList> {
             pinned = o.optBoolean("pinned", false),
             created = o.optLong("created"), items = items,
             columns = o.optInt("columns", 3).coerceIn(2, 4), under = under,
+            source = Source.entries.firstOrNull { it.name == o.optString("source") },
         )
     }
 }

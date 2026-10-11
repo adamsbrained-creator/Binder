@@ -7,6 +7,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -111,6 +114,8 @@ fun BoxScope.MenuSheet(vm: BinderViewModel) {
             MenuRow("All ${o.listsLower}") { vm.menu = false; nav.root(Route.Home) }
             MenuRow("Pinned") { go(Route.Lists(0)) }
             MenuRow("Recently edited") { go(Route.Lists(1)) }
+            // the View sheet belongs to the Binds screen, so go there first
+            MenuRow("View") { vm.menu = false; nav.root(Route.Home); vm.homeView = true }
             Cap("TOOLS")
             MenuRow("Search") { go(Route.Search) }
             Cap("APP")
@@ -124,10 +129,18 @@ fun BoxScope.MenuSheet(vm: BinderViewModel) {
 
 private const val CHANGELOG = """1.0.0
 • New look: menu button, round header buttons, rings and progress bars
-• Name for lists: Lists, Binds, Catalogs or Sleeves
+• One App name switch (Binder or Catalog) sets the name, the icon, the label under the icon and the word for your lists
+• Launcher icon: ink on white, in Outfit Medium, with a themed (monochrome) version
 • Albums can fetch cover, artist, year and genre from Apple Music (off by default)
 • View options per list: columns and what shows under covers
 • Items remember where their details came from
+• More sources (each only when "Fetch details automatically" is on): TMDB for movies and series, RAWG for games, Open Library (with Google Books) for books and comics, AniList for manga and anime, Wikipedia for Anything, OpenStreetMap for places, and the title and picture of any other pasted web page
+• New Manga and Comics lists
+• A list can pick its source (list menu > Source, or the switcher in quick add)
+• Details card also shows runtime, episodes, pages, volumes or platforms
+• Ratings: fixed the part-filled star, which sat too far left. Stars are now drawn exactly. New Rating style option (Stars or a number like 4.75 ★) with a 0 to 5 slider in steps of 0.25
+• View sheet for the home screen (layout, header, show) opened from the menu
+• Bento and Stacks no longer overlap or show placeholder gradients
 
 0.5
 • Pictures, layouts, fonts, gestures, zip backup, Binder / Catalog name
@@ -137,7 +150,19 @@ private const val CHANGELOG = """1.0.0
 
 private const val LICENCES = """Fonts: Outfit, Lora, Crimson Pro, Instrument Serif, Instrument Sans and Work Sans are used under the SIL Open Font License 1.1. The licence texts are in the FONT-LICENSES folder of the project.
 
-Album details and covers come from the Apple Music (iTunes) search service when fetching is on. Apple and Apple Music are trademarks of Apple Inc. Binder is not affiliated with or endorsed by Apple."""
+Album details and covers come from the Apple Music (iTunes) search service when fetching is on. Apple and Apple Music are trademarks of Apple Inc. Binder is not affiliated with or endorsed by Apple.
+
+Movie and series details and posters come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+Game details and pictures come from RAWG (rawg.io).
+
+Book details and covers come from Open Library (openlibrary.org), a project of the Internet Archive, and from Google Books when Open Library has nothing.
+
+Place details come from OpenStreetMap (© OpenStreetMap contributors, ODbL, openstreetmap.org/copyright) through Nominatim.
+
+Anime and manga details and covers come from AniList (anilist.co).
+
+Text and pictures from Wikipedia are available under the Creative Commons Attribution-ShareAlike licence; each item keeps a link to its article. Other web pages are read through the title, picture and description they publish themselves (Open Graph tags)."""
 
 @Composable
 private fun InfoRow(title: String, trailing: String = "", body: String) {
@@ -158,6 +183,7 @@ private fun InfoRow(title: String, trailing: String = "", body: String) {
 @Composable
 fun AboutScreen(vm: BinderViewModel) {
     val o = vm.opts
+    val ctx = LocalContext.current
     Screen {
         Header2("About", onBack = { vm.nav.pop() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -167,20 +193,22 @@ fun AboutScreen(vm: BinderViewModel) {
                         .border(1.dp, P.line, RoundedCornerShape(26.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Txt(
-                        o.appName.replaceFirstChar { it.uppercase() }, 25, Color(0xFF1C1C1C),
-                        weight = FontWeight.Medium, ls = (-0.02).em, font = Outfit, maxLines = 1,
+                    // the real launcher artwork, so About always shows the icon that is active
+                    Image(
+                        painterResource(if (o.isCatalog) R.drawable.ic_launcher_catalog_foreground else R.drawable.ic_launcher_foreground),
+                        contentDescription = o.appLabel,
+                        modifier = Modifier.size(104.dp),
                     )
                 }
                 Txt("Version ${BuildConfig.VERSION_NAME}", 22, weight = FontWeight.Medium, modifier = Modifier.padding(top = 16.dp))
                 Txt(
-                    "Lists and pictures stay on this phone. Only the text you search for is sent when fetching is on.",
+                    "${o.lists} and pictures stay on this phone. Only the text you search for is sent when fetching is on.",
                     14, P.mute, Modifier.padding(top = 6.dp, start = 12.dp, end = 12.dp), align = TextAlign.Center, lh = 20.sp,
                 )
             }
             InfoRow(
                 "Data", "On this phone",
-                "Your lists are saved in a file on this phone and your pictures in a folder next to it. Nothing is sent anywhere unless you turn on “Fetch details automatically” in More. Then only the words you type to search (or a link you paste) go to the source.",
+                "Your ${o.listsLower} are saved in a file on this phone and your pictures in a folder next to it. Nothing is sent anywhere unless you turn on “Fetch details automatically” in More. Then only the words you type to search (or a link you paste) go to the source.",
             )
             InfoRow("Changelog", body = CHANGELOG)
             Row(
@@ -192,6 +220,15 @@ fun AboutScreen(vm: BinderViewModel) {
                 Icon(Ic.Chevron, null, tint = P.mute, modifier = Modifier.size(18.dp))
             }
             InfoRow("Licences", body = LICENCES)
+            // RAWG asks for an active link back to RAWG wherever its data is used
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(CircleShape).background(P.surface)
+                    .clickable { openLink(ctx, "https://rawg.io") }.padding(horizontal = 20.dp, vertical = 15.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Txt("Data from RAWG", 15, modifier = Modifier.weight(1f))
+                Icon(Ic.Out, null, tint = P.mute, modifier = Modifier.size(18.dp))
+            }
             Cap("PART OF THE FAMILY")
             FlowChips(listOf("Paperback", "Scrapbook", "Binder"), 2) { }
             Spacer(Modifier.height(40.dp))

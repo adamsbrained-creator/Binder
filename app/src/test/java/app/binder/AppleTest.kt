@@ -109,10 +109,11 @@ class AppleTest {
     }
 
     @Test fun routerPicksTheSource() {
-        assertEquals(Source.APPLE, Sources.forKind(Kind.ALBUMS)?.source)
-        assertNull(Sources.forKind(Kind.CHECKLIST))
-        assertNull(Sources.forKind(Kind.ANYTHING))
+        assertEquals(Source.APPLE, Sources.forList(BinderList(name = "x", kind = Kind.ALBUMS))?.source)
+        assertNull(Sources.forList(BinderList(name = "x", kind = Kind.CHECKLIST)))
+        assertNull(Sources.forList(BinderList(name = "x", kind = Kind.GAMES)))
         assertEquals(Source.APPLE, Sources.forLink("https://music.apple.com/us/album/x/42")?.source)
-        assertNull(Sources.forLink("https://example.com"))
+        assertEquals(Source.WEB, Sources.forLink("https://example.com")?.source) // any other web page is read through its Open Graph tags
+        assertNull(Sources.forLink("just some words"))
     }
 }

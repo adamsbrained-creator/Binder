@@ -43,11 +43,13 @@ class MainActivity : ComponentActivity() {
 fun App(vm: BinderViewModel) {
     val nav = vm.nav
     val top = nav.top
-    val overlay = vm.drawer || vm.menu || vm.sheet != null || vm.quick != null
+    val overlay = vm.drawer || vm.menu || vm.homeView || vm.ratingEdit != null || vm.sheet != null || vm.quick != null
     BackHandler(enabled = overlay || vm.reorder || top != Route.Home || nav.stack.size > 1) {
         when {
+            vm.ratingEdit != null -> vm.ratingEdit = null
             vm.sheet != null -> vm.sheet = null
             vm.quick != null -> vm.quick = null
+            vm.homeView -> vm.homeView = false
             vm.menu -> vm.menu = false
             vm.drawer -> vm.drawer = false
             vm.reorder -> vm.reorder = false
@@ -76,10 +78,13 @@ fun App(vm: BinderViewModel) {
             if (vm.reorder) ReorderBar(vm, gap) else if (u != null) UndoBar(vm, u, gap)
             if (vm.drawer) Drawer(vm, top)
             if (vm.menu) MenuSheet(vm)
+            if (vm.homeView) HomeViewSheet(vm)
             val sh = vm.sheet
             if (sh != null) ActionSheet(vm, sh)
             val q = vm.quick
             if (q != null) QuickAdd(vm, q)
+            val re = vm.ratingEdit
+            if (re != null) RatingSheet(vm, re)
         }
         val rn = vm.rename
         if (rn != null) RenameDialog(vm, rn)

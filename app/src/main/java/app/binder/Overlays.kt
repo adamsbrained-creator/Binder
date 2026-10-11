@@ -73,7 +73,8 @@ private fun ToggleChip(label: String, on: Boolean, onClick: () -> Unit) {
     ) { Txt(label, 14, if (on) P.onPrimary else P.fg) }
 }
 
-private fun looksLink(q: String): Boolean = q.startsWith("http", true) || q.contains("music.apple.com", true)
+/** A pasted link: anything with a scheme, or an address one of the sources recognises (such as music.apple.com/…). */
+private fun looksLink(q: String): Boolean = q.contains("://") || Sources.forLink(q) != null
 
 /** What the search under the title is doing. */
 private sealed interface Lookup {
@@ -107,8 +108,11 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
     var lookup by remember { mutableStateOf<Lookup>(Lookup.Idle) }
     var saving by remember { mutableStateOf(false) }
     val l = lists.firstOrNull { it.id == target }
-    // a source only exists for some kinds, and only when fetching is switched on
-    val provider = if (o.fetch && l != null) Sources.forKind(l.kind) else null
+    // fetching must be on, and the list must have a source this build can use. A pasted link can be read by any source.
+    val fetchOn = o.fetch && l != null && !l.kind.isChecklist
+    val provider = if (fetchOn && l != null) Sources.forList(l) else null
+    val choices = if (fetchOn && l != null) Sources.readySources(l.kind) else emptyList()
+    var enterTick by remember { mutableStateOf(0) } // for sources that are only asked when enter is pressed
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         delay(250)
@@ -116,19 +120,22 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
     }
 
     // search as you type (about 400 ms after the last key), or look up a pasted link
-    LaunchedEffect(title, target, o.fetch) {
+    LaunchedEffect(title, target, o.fetch, provider?.source, enterTick) {
         lookup = Lookup.Idle
         val q = title.trim()
-        if (provider == null || q.length < 2) return@LaunchedEffect
+        if (!fetchOn || q.length < 2) return@LaunchedEffect
         val isLink = looksLink(q)
-        if (isLink && !provider.handlesLink(q)) {
-            lookup = Lookup.Failed("That link isn't from ${provider.source.label}.", false)
+        val p = if (isLink) Sources.forLink(q) else provider
+        if (isLink && p == null) {
+            lookup = Lookup.Failed("That link isn't one I can read.", false)
             return@LaunchedEffect
         }
-        delay(400)
+        if (p == null) return@LaunchedEffect
+        if (!isLink && p.searchOnEnter && enterTick == 0) return@LaunchedEffect // waits for enter
+        delay(if (p.searchOnEnter) 0 else 400)
         lookup = Lookup.Loading
         val r = withContext(Dispatchers.IO) {
-            runCatching { if (isLink) listOfNotNull(provider.fromLink(q)) else provider.search(q) }
+            runCatching { if (isLink) listOfNotNull(p.fromLink(q)) else p.search(q) }
         }
         val err = r.exceptionOrNull()
         lookup = when {
@@ -150,9 +157,13 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
         if (l == null || title.isBlank() || saving) return
         val lk = lookup
         val q = title.trim()
-        if (provider != null && looksLink(q)) {
+        if (fetchOn && looksLink(q)) {
             // a pasted link only adds once it has been found
             if (lk is Lookup.Results && lk.list.isNotEmpty()) pick(lk.list.first())
+            return
+        }
+        if (provider != null && provider.searchOnEnter && lk is Lookup.Idle && enterTick == 0) {
+            enterTick = 1 // this source is only asked when enter is pressed; the next press adds
             return
         }
         if (provider != null && lk is Lookup.Failed) {
@@ -171,7 +182,7 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
         FlowChips(lists.map { it.name }, lists.indexOfFirst { it.id == target }) { target = lists[it].id }
         BasicTextField(
             value = title,
-            onValueChange = { title = it },
+            onValueChange = { title = it; enterTick = 0 }, // typing again means "wait for enter" again
             singleLine = true,
             textStyle = TextStyle(color = P.fg, fontSize = 26.sp, fontFamily = TitleFont),
             cursorBrush = SolidColor(Coral),
@@ -181,7 +192,7 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
             decorationBox = { inner ->
                 Box {
                     if (title.isEmpty()) {
-                        val hint = if (provider != null) "${l?.kind?.single?.replaceFirstChar { it.uppercase() }} title or ${provider.source.label} link"
+                        val hint = if (provider != null) "${l?.kind?.single?.replaceFirstChar { it.uppercase() }} title or link"
                         else if (l != null) "New ${l.kind.single}" else "Add something…"
                         Txt(hint, 26, P.mute, font = TitleFont, maxLines = 1)
                     }
@@ -190,11 +201,26 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
             },
         )
 
-        // ---- what the source found ----
-        if (provider != null) {
+        // ---- which source, and what it found ----
+        val srcLabel = provider?.source?.label ?: "the source"
+        if (choices.size > 1) {
+            Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Txt("SOURCE", 11, P.mute, ls = 0.08.em)
+                choices.forEach { c ->
+                    val on = c == provider?.source
+                    Box(
+                        Modifier.clip(CircleShape).background(if (on) P.primary else P.surface)
+                            .clickable { if (l != null) vm.setSource(l.id, c) }.padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) { Txt(c.label, 12, if (on) P.onPrimary else P.fg) }
+                }
+            }
+        }
+        if (fetchOn) {
             when (val lk = lookup) {
-                Lookup.Idle -> {}
-                Lookup.Loading -> Txt("Searching ${provider.source.label}…", 13, P.mute, Modifier.padding(bottom = 12.dp))
+                Lookup.Idle -> if (provider != null && provider.searchOnEnter && title.trim().length >= 2) {
+                    Txt("Press enter to search $srcLabel.", 12, P.mute, Modifier.padding(bottom = 12.dp))
+                }
+                Lookup.Loading -> Txt("Searching $srcLabel…", 13, P.mute, Modifier.padding(bottom = 12.dp))
                 is Lookup.Failed -> Txt(
                     if (lk.offline) "${lk.message} Press Add to keep it and fetch the details later." else lk.message,
                     13, Coral, Modifier.padding(bottom = 12.dp),
@@ -240,7 +266,7 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
                                 }
                             }
                         }
-                        Txt("Results from ${provider.source.label}", 12, P.mute, Modifier.fillMaxWidth().padding(top = 10.dp), align = TextAlign.Center)
+                        Txt(if (provider?.source == Source.NOMINATIM) "Results from OpenStreetMap · © OpenStreetMap contributors" else "Results from $srcLabel", 12, P.mute, Modifier.fillMaxWidth().padding(top = 10.dp), align = TextAlign.Center)
                     }
                 }
             }
@@ -253,11 +279,11 @@ fun BoxScope.QuickAdd(vm: BinderViewModel, preset: String) {
                 ToggleChip("Note", showNote) { showNote = !showNote }
             }
             if (showSub) Field(l.kind.subLabel, sub, Modifier.padding(top = 10.dp)) { sub = it }
-            if (showRating) Box(Modifier.padding(top = 10.dp)) { Stars(rating) { rating = it } }
+            if (showRating) Box(Modifier.padding(top = 10.dp)) { RatingInput(vm, rating) { rating = it } }
             if (showNote) Field("Note", note, Modifier.padding(top = 10.dp), singleLine = false) { note = it }
         }
         Spacer(Modifier.height(16.dp))
-        val isLinkInput = provider != null && looksLink(title.trim())
+        val isLinkInput = fetchOn && looksLink(title.trim())
         val ready = !isLinkInput || (lookup as? Lookup.Results)?.list?.isNotEmpty() == true
         if (ready) BigButton(if (saving) "Saving…" else "Add to ${o.listLower}") { submit() }
     }
