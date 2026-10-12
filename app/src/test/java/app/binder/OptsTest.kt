@@ -21,4 +21,14 @@ class OptsTest {
     @Test fun unknownNameFallsBackToBinder() {
         assertEquals("Binds", Opts(appName = "whatever").lists)
     }
+
+    @Test fun menuStyleDefaultsToTheOriginalClassicMenu() {
+        assertEquals(MenuStyle.CLASSIC, Opts().menuStyle)
+        assertEquals(listOf("Classic", "Floating"), MenuStyle.entries.map { it.label })
+    }
+
+    @Test fun headerSizeDefaultsToTheOriginalLargeHeader() {
+        assertEquals(HeaderSize.LARGE, Opts().headerSize)
+        assertEquals(listOf("Compact", "Regular", "Large"), HeaderSize.entries.map { it.label })
+    }
 }

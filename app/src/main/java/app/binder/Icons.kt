@@ -35,5 +35,12 @@ object Ic {
     val Close = icon("close", "M6 6l12 12M18 6L6 18")
     val Chevron = icon("chevron", "M9 5l7 7-7 7")
     val Out = icon("out", "M8 16L16 8M9 8h7v7")
+    val Layers = icon("layers", "M12 3l9 5-9 5-9-5 9-5z", "M3 13l9 5 9-5")
+    val Sliders = icon(
+        "sliders", "M4 7h9M17 7h3M4 17h3M11 17h9",
+        "M17 7 a2 2 0 1 1 -4 0 a2 2 0 1 1 4 0 z", "M11 17 a2 2 0 1 1 -4 0 a2 2 0 1 1 4 0 z",
+    )
+    val Download = icon("download", "M12 4v11M7 11l5 5 5-5M5 20h14")
+    val Info = icon("info", "M21 12 a9 9 0 1 1 -18 0 a9 9 0 1 1 18 0 z", "M12 11v5M12 8h0.01")
     val Photo = icon("photo", "M4 5h16v14H4z", "M4 16l5-5 4 4 3-3 4 4")
 }

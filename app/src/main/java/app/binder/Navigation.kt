@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,13 +64,38 @@ fun AppHeader(vm: BinderViewModel) {
     val more = { vm.nav.push(Route.More) }
     val menu = { vm.drawer = true }
     when (h) {
-        HeaderStyle.WORDMARK -> Box(Modifier.fillMaxWidth().height(68.dp)) {
-            Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Menu, "Menu") { vm.menu = true } }
-            Txt(
-                name, 32, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.03).em,
-                maxLines = 1,
-            )
-            Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Search, "Search") { search() } }
+        HeaderStyle.WORDMARK -> when (o.headerSize) {
+            // Large: the original header
+            HeaderSize.LARGE -> Box(Modifier.fillMaxWidth().height(68.dp)) {
+                Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Menu, "Menu") { vm.menu = true } }
+                Txt(
+                    name, 32, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.03).em,
+                    maxLines = 1,
+                )
+                Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Search, "Search") { search() } }
+            }
+            // Regular: smaller circles, centred name
+            HeaderSize.REGULAR -> CompositionLocalProvider(LocalHeaderSize provides HeaderSize.REGULAR) {
+                Box(Modifier.fillMaxWidth().height(56.dp)) {
+                    Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Menu, "Menu") { vm.menu = true } }
+                    Txt(
+                        name, 24, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.02).em,
+                        maxLines = 1,
+                    )
+                    Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Search, "Search") { search() } }
+                }
+            }
+            // Compact: no circles, name on the left
+            HeaderSize.COMPACT -> CompositionLocalProvider(LocalHeaderSize provides HeaderSize.COMPACT) {
+                Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircleBtn(Ic.Menu, "Menu") { vm.menu = true }
+                    Txt(
+                        name, 20, weight = FontWeight.Medium, modifier = Modifier.weight(1f).padding(start = 4.dp),
+                        ls = (-0.02).em, maxLines = 1,
+                    )
+                    CircleBtn(Ic.Search, "Search") { search() }
+                }
+            }
         }
         HeaderStyle.CIRCLES -> Box(Modifier.fillMaxWidth().height(60.dp)) {
             Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Search, "Search") { search() } }

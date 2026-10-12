@@ -48,6 +48,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -159,12 +161,32 @@ fun TopBar(
 
 // ───────── buttons & inputs ─────────
 
+/** Set by the headers so the round buttons inside them follow the Header size option. null = not in a header. */
+val LocalHeaderSize = compositionLocalOf<HeaderSize?> { null }
+
 @Composable
 fun CircleBtn(icon: ImageVector, desc: String, bg: Color = P.surface, tint: Color = P.fg, onClick: () -> Unit) {
-    Box(
-        Modifier.size(48.dp).clip(CircleShape).background(bg).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(22.dp)) }
+    when (LocalHeaderSize.current) {
+        // Compact: no circle, just the icon
+        HeaderSize.COMPACT -> Box(
+            Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(22.dp)) }
+        // Regular: a 40 circle inside a 44 touch area
+        HeaderSize.REGULAR -> Box(
+            Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(bg), contentAlignment = Alignment.Center) {
+                Icon(icon, desc, tint = tint, modifier = Modifier.size(22.dp))
+            }
+        }
+        // Large (and anywhere outside a header): the original button
+        else -> Box(
+            Modifier.size(48.dp).clip(CircleShape).background(bg).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, desc, tint = tint, modifier = Modifier.size(22.dp)) }
+    }
 }
 
 @Composable
@@ -563,22 +585,40 @@ fun Header2(
     onBack: (() -> Unit)? = null,
     right: @Composable RowScope.() -> Unit = {},
 ) {
-    Box(Modifier.fillMaxWidth().height(64.dp)) {
-        Box(Modifier.align(Alignment.CenterStart)) {
-            if (onBack != null) CircleBtn(Ic.Back, "Back") { onBack() }
+    val size = LocalOpts.current.headerSize
+    if (size == HeaderSize.COMPACT) {
+        // Compact: no circles, title left-aligned
+        CompositionLocalProvider(LocalHeaderSize provides size) {
+            Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) CircleBtn(Ic.Back, "Back") { onBack() }
+                Column(Modifier.weight(1f).padding(start = if (onBack != null) 4.dp else 0.dp)) {
+                    Txt(title, 20, weight = FontWeight.Medium, maxLines = 1, ls = (-0.02).em)
+                    if (sub.isNotEmpty()) Txt(sub, 12, P.mute, maxLines = 1)
+                }
+                Row(content = right)
+            }
         }
-        Column(
-            Modifier.align(Alignment.Center).fillMaxWidth(0.4f),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Txt(title, 22, weight = FontWeight.Medium, maxLines = 1, ls = (-0.02).em, align = TextAlign.Center)
-            if (sub.isNotEmpty()) Txt(sub, 12, P.mute, maxLines = 1, align = TextAlign.Center)
+        return
+    }
+    val regular = size == HeaderSize.REGULAR
+    CompositionLocalProvider(LocalHeaderSize provides size) {
+        Box(Modifier.fillMaxWidth().height(if (regular) 56.dp else 64.dp)) {
+            Box(Modifier.align(Alignment.CenterStart)) {
+                if (onBack != null) CircleBtn(Ic.Back, "Back") { onBack() }
+            }
+            Column(
+                Modifier.align(Alignment.Center).fillMaxWidth(0.4f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Txt(title, if (regular) 20 else 22, weight = FontWeight.Medium, maxLines = 1, ls = (-0.02).em, align = TextAlign.Center)
+                if (sub.isNotEmpty()) Txt(sub, 12, P.mute, maxLines = 1, align = TextAlign.Center)
+            }
+            Row(
+                Modifier.align(Alignment.CenterEnd),
+                horizontalArrangement = Arrangement.spacedBy(if (regular) 4.dp else 8.dp),
+                content = right,
+            )
         }
-        Row(
-            Modifier.align(Alignment.CenterEnd),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            content = right,
-        )
     }
 }
 

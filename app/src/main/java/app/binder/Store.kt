@@ -64,6 +64,7 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
     var reorder by mutableStateOf(false)
     var drawer by mutableStateOf(false)
     var menu by mutableStateOf(false)
+    var moreJump by mutableStateOf<String?>(null) // "backup": More scrolls to Backup when it opens
     var ratingEdit by mutableStateOf<RatingEdit?>(null) // the number style's rating sheet
     var homeView by mutableStateOf(false)   // the View sheet of the Binds screen
     var homeFilter by mutableStateOf(0)     // 0 all, 1 media, 2 checklists (kept while the app is open)
@@ -92,6 +93,8 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             appName = prefs.getString("appName", d.appName) ?: d.appName,
             font = pick("font", FontChoice.entries, d.font),
             header = pick("header", HeaderStyle.entries, d.header),
+            headerSize = pick("headerSize", HeaderSize.entries, d.headerSize),
+            menuStyle = pick("menuStyle", MenuStyle.entries, d.menuStyle),
             nav = pick("nav", NavStyle.entries, d.nav),
             home = pick("home", HomeStyle.entries, d.home),
             add = pick("add", AddStyle.entries, d.add),
@@ -109,7 +112,9 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
         if (o.isCatalog != before.isCatalog) Launcher.sync(ctx, o.isCatalog)
         prefs.edit()
             .putString("theme", o.theme).putString("appName", o.appName).putString("font", o.font.name)
-            .putString("header", o.header.name).putString("nav", o.nav.name).putString("home", o.home.name)
+            .putString("header", o.header.name).putString("headerSize", o.headerSize.name)
+            .putString("menuStyle", o.menuStyle.name)
+            .putString("nav", o.nav.name).putString("home", o.home.name)
             .putString("add", o.add.name).putString("itemPage", o.itemPage.name)
             .putBoolean("fetch", o.fetch).putBoolean("emptySlots", o.emptySlots).putString("ratingStyle", o.ratingStyle.name)
             .apply()

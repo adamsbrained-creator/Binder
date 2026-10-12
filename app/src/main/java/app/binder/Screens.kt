@@ -836,6 +836,8 @@ fun BoxScope.HomeViewSheet(vm: BinderViewModel) {
             FlowChips(HomeStyle.entries.map { it.label }, o.home.ordinal) { i -> vm.change { it.copy(home = HomeStyle.entries[i]) } }
             Cap("HEADER")
             FlowChips(HeaderStyle.entries.map { it.label }, o.header.ordinal) { i -> vm.change { it.copy(header = HeaderStyle.entries[i]) } }
+            Cap("HEADER SIZE")
+            Seg(HeaderSize.entries.map { it.label }, o.headerSize.ordinal) { i -> vm.change { it.copy(headerSize = HeaderSize.entries[i]) } }
             Txt(
                 "Your ${o.listsLower} keep the order you drag them into. The filter only changes what is shown.",
                 12, P.mute, Modifier.padding(top = 14.dp, bottom = 12.dp),

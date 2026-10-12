@@ -27,11 +27,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +43,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.net.Uri
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -171,10 +175,20 @@ fun MoreScreen(vm: BinderViewModel) {
         if (uri != null) pending = uri
     }
 
+    // "Backup and restore" in the floating menu opens More already scrolled down to the Backup section
+    val scroll = rememberScrollState()
+    LaunchedEffect(vm.moreJump) {
+        if (vm.moreJump == "backup") {
+            withTimeoutOrNull(600) { snapshotFlow { scroll.maxValue }.first { it > 0 } }
+            scroll.animateScrollTo(scroll.maxValue)
+            vm.moreJump = null
+        }
+    }
+
     Screen(rail = true) {
         Header2("More", onBack = if (vm.nav.stack.size > 1) ({ vm.nav.pop() }) else null)
         TopTabs(vm, Route.More)
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        Column(Modifier.weight(1f).verticalScroll(scroll)) {
             Cap("DETAILS")
             SwitchRow("Fetch details automatically", "Only the text you search for is sent.", o.fetch) { v ->
                 vm.change { it.copy(fetch = v) }
@@ -224,6 +238,26 @@ fun MoreScreen(vm: BinderViewModel) {
             Seg(listOf("System", "Light", "Dark"), themes.indexOf(o.theme).coerceAtLeast(0)) { i ->
                 vm.change { it.copy(theme = themes[i]) }
             }
+
+            Cap("HEADER SIZE")
+            Seg(HeaderSize.entries.map { it.label }, o.headerSize.ordinal) { i ->
+                vm.change { it.copy(headerSize = HeaderSize.entries[i]) }
+            }
+            Txt(
+                "Compact gives your ${o.listsLower} the most space: no circles, name on the left. " +
+                    "Large is the original. It sets the top bar of every page, and the Wordmark header on the home screen.",
+                12, P.mute, Modifier.padding(top = 6.dp),
+            )
+
+            Cap("MENU STYLE")
+            Seg(MenuStyle.entries.map { it.label }, o.menuStyle.ordinal) { i ->
+                vm.change { it.copy(menuStyle = MenuStyle.entries[i]) }
+            }
+            Txt(
+                "Floating: quick buttons to add an item, make a new ${o.listLower} or search, then Settings, Backup and About. " +
+                    "Classic is the original and also has Pinned, Recently edited and View.",
+                12, P.mute, Modifier.padding(top = 6.dp),
+            )
 
             OptionGroup("NAVIGATION", NavStyle.entries, o.nav, { it.label }) { v -> vm.change { it.copy(nav = v) } }
             OptionGroup("ADDING ITEMS", AddStyle.entries, o.add, { it.label }) { v -> vm.change { it.copy(add = v) } }

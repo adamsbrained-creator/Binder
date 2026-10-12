@@ -113,6 +113,12 @@ enum class HeaderStyle(val label: String) {
     WORDMARK("Wordmark"), CIRCLES("Circles"), MENU_CENTER("Menu, centred"), MENU_LEFT("Menu, left")
 }
 
+/** How much room the top bar takes. LARGE is the original header, unchanged. */
+enum class HeaderSize(val label: String) { COMPACT("Compact"), REGULAR("Regular"), LARGE("Large") }
+
+/** The menu opened from the menu button. CLASSIC is the original sheet, unchanged. */
+enum class MenuStyle(val label: String) { CLASSIC("Classic"), FLOATING("Floating") }
+
 enum class NavStyle(val label: String) {
     NONE("None"), DOCK("Dock"), SPLIT("Split dock"), NOTCH("Notch bar"), SEARCH("Search bar"),
     TABS("Top tabs"), MINI("Mini dock"), PILL("Labelled pill"), RAIL("Side rail"), DRAWER("Drawer")
@@ -138,6 +144,8 @@ data class Opts(
     val appName: String = "binder", // "binder" or "catalog"
     val font: FontChoice = FontChoice.OUTFIT,
     val header: HeaderStyle = HeaderStyle.WORDMARK,
+    val headerSize: HeaderSize = HeaderSize.LARGE, // saved as the optional key "headerSize"; LARGE = the original look
+    val menuStyle: MenuStyle = MenuStyle.CLASSIC, // saved as the optional key "menuStyle"; CLASSIC = the original menu
     val nav: NavStyle = NavStyle.NONE,
     val home: HomeStyle = HomeStyle.PINNED,
     val add: AddStyle = AddStyle.SHEET,

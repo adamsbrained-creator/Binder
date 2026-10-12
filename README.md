@@ -28,6 +28,11 @@ The signed workflow runs the unit tests after saving the APK; if that last step 
 - **New shell**: round header buttons, a black/white **menu button** at the bottom (tap = menu, press and hold = pops out a +),
   and a menu sheet with Lists / Pinned / Recently edited, Search, More and About.
 - **App name**: Binder or Catalog (More > App name). One switch sets the name, the launcher icon and label (two activity-aliases, see `Launcher.kt`), and the word for your lists everywhere: Bind/Binds or Catalog/Catalogs.
+- **Header size** (More > Header size, or View on the home screen): Compact (no circles, name on the left), Regular
+  (smaller circles) or Large. Large is the original header and the default, so nothing changes until you pick another.
+- **Menu style** (More > Menu style): Classic is the original menu and the default. Floating is a rounded sheet with
+  quick buttons (Add item, New bind, Search) and links to Settings, Backup and restore (opens More at Backup) and About.
+  It leaves out Pinned, Recently edited and View, which stay in Classic.
 - **Albums can fetch details** (More > Fetch details automatically): type a title and pick a result, or paste an
   Apple Music link. Cover, artist, year, genre and track count are saved on the phone. If you are offline the item is
   saved as typed with "Details pending" and filled in when you open the list later.
