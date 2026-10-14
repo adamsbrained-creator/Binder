@@ -22,10 +22,14 @@ sealed interface Route {
     data object More : Route
     data object NewList : Route
     data object About : Route
+    data class Setting(val page: SettingsPage) : Route // a page inside Settings (Route.More is the Settings page itself)
     data class Lists(val mode: Int) : Route // 0 = pinned, 1 = recently edited
     data class Lst(val id: String) : Route
     data class ItemEdit(val listId: String, val itemId: String?) : Route
 }
+
+/** The pages you can open from Settings. */
+enum class SettingsPage { FETCH, ITEMS, APPEARANCE, APP_STYLE, APP_NAME, BACKUP }
 
 class Nav {
     var stack by mutableStateOf<List<Route>>(listOf(Route.Home))
@@ -64,7 +68,6 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
     var reorder by mutableStateOf(false)
     var drawer by mutableStateOf(false)
     var menu by mutableStateOf(false)
-    var moreJump by mutableStateOf<String?>(null) // "backup": More scrolls to Backup when it opens
     var ratingEdit by mutableStateOf<RatingEdit?>(null) // the number style's rating sheet
     var homeView by mutableStateOf(false)   // the View sheet of the Binds screen
     var homeFilter by mutableStateOf(0)     // 0 all, 1 media, 2 checklists (kept while the app is open)
@@ -93,8 +96,6 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             appName = prefs.getString("appName", d.appName) ?: d.appName,
             font = pick("font", FontChoice.entries, d.font),
             header = pick("header", HeaderStyle.entries, d.header),
-            headerSize = pick("headerSize", HeaderSize.entries, d.headerSize),
-            menuStyle = pick("menuStyle", MenuStyle.entries, d.menuStyle),
             nav = pick("nav", NavStyle.entries, d.nav),
             home = pick("home", HomeStyle.entries, d.home),
             add = pick("add", AddStyle.entries, d.add),
@@ -102,6 +103,8 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
             fetch = prefs.getBoolean("fetch", d.fetch),
             emptySlots = prefs.getBoolean("emptySlots", d.emptySlots),
             ratingStyle = pick("ratingStyle", RatingStyle.entries, d.ratingStyle),
+            headerSize = pick("headerSize", HeaderSize.entries, d.headerSize),
+            listProgress = prefs.getBoolean("listProgress", d.listProgress),
         )
     }
 
@@ -112,11 +115,10 @@ class BinderViewModel(app: Application) : AndroidViewModel(app) {
         if (o.isCatalog != before.isCatalog) Launcher.sync(ctx, o.isCatalog)
         prefs.edit()
             .putString("theme", o.theme).putString("appName", o.appName).putString("font", o.font.name)
-            .putString("header", o.header.name).putString("headerSize", o.headerSize.name)
-            .putString("menuStyle", o.menuStyle.name)
-            .putString("nav", o.nav.name).putString("home", o.home.name)
+            .putString("header", o.header.name).putString("nav", o.nav.name).putString("home", o.home.name)
             .putString("add", o.add.name).putString("itemPage", o.itemPage.name)
             .putBoolean("fetch", o.fetch).putBoolean("emptySlots", o.emptySlots).putString("ratingStyle", o.ratingStyle.name)
+            .putString("headerSize", o.headerSize.name).putBoolean("listProgress", o.listProgress)
             .apply()
     }
 

@@ -66,6 +66,7 @@ fun App(vm: BinderViewModel) {
                     Route.More -> MoreScreen(vm)
                     Route.NewList -> NewListScreen(vm)
                     Route.About -> AboutScreen(vm)
+                    is Route.Setting -> SettingsPageScreen(vm, r.page)
                     is Route.Lists -> ListsScreen(vm, r.mode)
                     is Route.Lst -> ListScreen(vm, r.id)
                     is Route.ItemEdit -> ItemScreen(vm, r.listId, r.itemId)

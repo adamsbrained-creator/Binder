@@ -113,11 +113,8 @@ enum class HeaderStyle(val label: String) {
     WORDMARK("Wordmark"), CIRCLES("Circles"), MENU_CENTER("Menu, centred"), MENU_LEFT("Menu, left")
 }
 
-/** How much room the top bar takes. LARGE is the original header, unchanged. */
+/** How much room the top bar takes (same three sizes as Paperback). Compact also drops the page title on the home screen. */
 enum class HeaderSize(val label: String) { COMPACT("Compact"), REGULAR("Regular"), LARGE("Large") }
-
-/** The menu opened from the menu button. CLASSIC is the original sheet, unchanged. */
-enum class MenuStyle(val label: String) { CLASSIC("Classic"), FLOATING("Floating") }
 
 enum class NavStyle(val label: String) {
     NONE("None"), DOCK("Dock"), SPLIT("Split dock"), NOTCH("Notch bar"), SEARCH("Search bar"),
@@ -144,8 +141,6 @@ data class Opts(
     val appName: String = "binder", // "binder" or "catalog"
     val font: FontChoice = FontChoice.OUTFIT,
     val header: HeaderStyle = HeaderStyle.WORDMARK,
-    val headerSize: HeaderSize = HeaderSize.LARGE, // saved as the optional key "headerSize"; LARGE = the original look
-    val menuStyle: MenuStyle = MenuStyle.CLASSIC, // saved as the optional key "menuStyle"; CLASSIC = the original menu
     val nav: NavStyle = NavStyle.NONE,
     val home: HomeStyle = HomeStyle.PINNED,
     val add: AddStyle = AddStyle.SHEET,
@@ -153,6 +148,8 @@ data class Opts(
     val fetch: Boolean = false,           // fetch details from the internet (off = no network calls at all)
     val emptySlots: Boolean = true,       // dashed "+" slots in empty places
     val ratingStyle: RatingStyle = RatingStyle.STARS, // saved as the optional key "ratingStyle"
+    val headerSize: HeaderSize = HeaderSize.REGULAR,  // saved as the optional key "headerSize"
+    val listProgress: Boolean = true,                 // the coral progress line under a list's header; optional key "listProgress"
 )
 
 /** True when the app is set to Catalog (name, icon and wording all follow this one switch). */

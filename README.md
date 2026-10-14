@@ -3,7 +3,7 @@
 A list app for Android (Kotlin + Jetpack Compose), in the family with Paperback and Scrapbook.
 
 **Privacy:** your lists and pictures stay on the phone. Only the text you search for is sent, and only when
-*More > Fetch details automatically* is on (it is off by default). With it off, Binder makes no network calls at all.
+*Settings > Fetch details automatically* is on (it is off by default). With it off, Binder makes no network calls at all.
 
 ## Build it
 Push this folder to GitHub. Use the **Binder (signed)** workflow for the APK you install: it signs every build with
@@ -26,14 +26,9 @@ The signed workflow runs the unit tests after saving the APK; if that last step 
 
 ## New in 1.0.0
 - **New shell**: round header buttons, a black/white **menu button** at the bottom (tap = menu, press and hold = pops out a +),
-  and a menu sheet with Lists / Pinned / Recently edited, Search, More and About.
-- **App name**: Binder or Catalog (More > App name). One switch sets the name, the launcher icon and label (two activity-aliases, see `Launcher.kt`), and the word for your lists everywhere: Bind/Binds or Catalog/Catalogs.
-- **Header size** (More > Header size, or View on the home screen): Compact (no circles, name on the left), Regular
-  (smaller circles) or Large. Large is the original header and the default, so nothing changes until you pick another.
-- **Menu style** (More > Menu style): Classic is the original menu and the default. Floating is a rounded sheet with
-  quick buttons (Add item, New bind, Search) and links to Settings, Backup and restore (opens More at Backup) and About.
-  It leaves out Pinned, Recently edited and View, which stay in Classic.
-- **Albums can fetch details** (More > Fetch details automatically): type a title and pick a result, or paste an
+  and a menu sheet with Lists / Pinned / Recently edited, Search, Settings and About.
+- **App name**: Binder or Catalog (Settings > App name). One switch sets the name, the launcher icon and label (two activity-aliases, see `Launcher.kt`), and the word for your lists everywhere: Bind/Binds or Catalog/Catalogs.
+- **Albums can fetch details** (Settings > Fetch details automatically): type a title and pick a result, or paste an
   Apple Music link. Cover, artist, year, genre and track count are saved on the phone. If you are offline the item is
   saved as typed with "Details pending" and filled in when you open the list later.
 - **Home**: pinned cards with a count and progress bar, list rows with a progress ring, dashed "+" slots.
@@ -47,7 +42,7 @@ The signed workflow runs the unit tests after saving the APK; if that last step 
 Paperback / Scrapbook sync, "Up next" from Paperback, Spotify links.
 
 ## Fetching and keys
-Everything below runs only when *More > Fetch details automatically* is on, and only for what you type or paste.
+Everything below runs only when *Settings > Fetch details automatically* is on, and only for what you type or paste.
 
 | Kind | Sources (first is the default) | Key |
 |---|---|---|
@@ -67,19 +62,19 @@ A source's own rating is never imported.
 **Keys.** Put `TMDB_KEY=...` and `RAWG_KEY=...` in `local.properties` (already git-ignored) for a local build, or add
 them as repository secrets named `TMDB_KEY` and `RAWG_KEY` (Settings > Secrets and variables > Actions) for the
 workflows. Nothing is committed. A build without a key still works: that source says it isn't set up and is hidden in
-More > Sources.
+Settings > Fetch details > Sources.
 
 Limits kept by the app: Apple 15 calls a minute, TMDB 30 per 10 s, RAWG 10 per 10 s, Open Library 3 per 3 s,
 Nominatim 1 per 1.1 s, AniList 40 per minute.
 
 ## Manual checks (things the unit tests can't see)
-1. **Binder to Catalog and back** (More > App name): the wordmark, the Bind/Binds or Catalog/Catalogs wording
+1. **Binder to Catalog and back** (Settings > App name): the wordmark, the Bind/Binds or Catalog/Catalogs wording
    (menu, empty screen, New..., Add to..., Rename, About), the About icon, and after a moment the launcher icon and label.
    You may need to re-add the icon to the home screen. Switch back and check again.
-2. **Restore a backup** (More > Backup > Restore): lists and pictures come back; the launcher entry still matches the
+2. **Restore a backup** (Settings > Backup & restore > Restore): lists and pictures come back; the launcher entry still matches the
    App name; nothing else changes.
 3. **Upgrade from the current build**: install over 1.0.0 with the same signing key. Lists, options and pinned lists
-   survive; More has a Rating style row; "listName" is simply ignored.
+   survive; Settings has an Items & ratings page with the Rating style; "listName" is simply ignored.
 4. **Fetching off** (the default): no network calls at all. Try a link paste and a search: nothing is sent. Turn it on
    and the sources appear.
 5. **Ratings**: set 0.5, 2.5, 4.75 in both styles; large font size (Settings > Display) keeps stars aligned.
@@ -101,9 +96,9 @@ credits, and a "Data from RAWG" link.
 - `Theme.kt` – colours, fonts, cover colours
 - `Components.kt` – shared pieces and gestures
 - `Shell.kt` – menu button, menu sheet, About page
-- `Navigation.kt` – headers, optional navigation bars, drawer
+- `Navigation.kt` – headers (Compact / Regular / Large, like Paperback), the small page title, optional navigation bars, drawer
 - `Overlays.kt` – hold menus, quick add (with search), undo bar
 - `Screens.kt` – home, list and item screens
-- `Settings.kt` – new list, search, More
+- `Settings.kt` – new list, search, Settings (Paperback style: summary card, grouped rows, one page per group)
 - `app/src/test/` – unit tests (one file per source with canned answers, ratings, saving and loading old files)
 - Fonts are in `app/src/main/res/font/`, licences in `FONT-LICENSES/`.

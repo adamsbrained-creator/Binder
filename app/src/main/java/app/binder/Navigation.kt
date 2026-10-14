@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 
@@ -54,70 +55,98 @@ fun showsPlus(n: NavStyle): Boolean = n == NavStyle.SPLIT || n == NavStyle.NOTCH
 
 // ───────── header ─────────
 
+/** Measures of the three header sizes (the same ones Paperback uses). */
+private class HdrSize(val btn: Int, val round: Boolean, val word: Int, val col: Int)
+
+private fun HeaderSize.spec() = when (this) {
+    HeaderSize.COMPACT -> HdrSize(btn = 44, round = false, word = 20, col = 44)
+    HeaderSize.REGULAR -> HdrSize(btn = 40, round = true, word = 24, col = 44)
+    HeaderSize.LARGE -> HdrSize(btn = 46, round = true, word = 30, col = 46)
+}
+
+/** Space between the header bar and the page title under it. */
+private fun HeaderSize.labelTop(): Int = when (this) {
+    HeaderSize.COMPACT -> 2
+    HeaderSize.REGULAR -> 6
+    HeaderSize.LARGE -> 12
+}
+
+/** A header button: a round button, or just the icon in the Compact size. */
+@Composable
+private fun HdrBtn(icon: ImageVector, desc: String, s: HdrSize, onClick: () -> Unit) {
+    Box(
+        Modifier.size(s.btn.dp).clip(CircleShape)
+            .background(if (s.round) P.surface else Color.Transparent).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, desc, tint = P.fg, modifier = Modifier.size(22.dp)) }
+}
+
+/**
+ * The page's name just under the header: small, next to the menu button (Paperback's style), with an optional
+ * note after it. Pages inside Settings pass [onBack] to get a back arrow in front.
+ */
+@Composable
+fun PageLabel(text: String, note: String = "", onBack: (() -> Unit)? = null) {
+    val top = LocalOpts.current.headerSize.labelTop()
+    Row(
+        Modifier.fillMaxWidth().padding(start = if (onBack != null) 4.dp else 10.dp, top = top.dp, bottom = 6.dp)
+            .heightIn(min = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onBack), contentAlignment = Alignment.Center) {
+                Icon(Ic.Back, "Back", tint = P.fg, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(2.dp))
+        }
+        Txt(text, 16, weight = FontWeight.Medium, maxLines = 1)
+        if (note.isNotEmpty()) Txt(note, 13, P.mute, Modifier.padding(start = 8.dp), maxLines = 1)
+    }
+}
+
 @Composable
 fun AppHeader(vm: BinderViewModel) {
     val o = vm.opts
+    val s = o.headerSize.spec()
+    val bar = (s.btn + 12).dp
     val h = if (o.nav == NavStyle.DRAWER && (o.header == HeaderStyle.WORDMARK || o.header == HeaderStyle.CIRCLES))
         HeaderStyle.MENU_LEFT else o.header
     val name = o.appLabel.lowercase()
     val search = { vm.nav.push(Route.Search) }
-    val more = { vm.nav.push(Route.More) }
+    val more = { if (vm.nav.top != Route.More) vm.nav.push(Route.More) }
     val menu = { vm.drawer = true }
     when (h) {
-        HeaderStyle.WORDMARK -> when (o.headerSize) {
-            // Large: the original header
-            HeaderSize.LARGE -> Box(Modifier.fillMaxWidth().height(68.dp)) {
-                Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Menu, "Menu") { vm.menu = true } }
-                Txt(
-                    name, 32, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.03).em,
-                    maxLines = 1,
-                )
-                Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Search, "Search") { search() } }
-            }
-            // Regular: smaller circles, centred name
-            HeaderSize.REGULAR -> CompositionLocalProvider(LocalHeaderSize provides HeaderSize.REGULAR) {
-                Box(Modifier.fillMaxWidth().height(56.dp)) {
-                    Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Menu, "Menu") { vm.menu = true } }
-                    Txt(
-                        name, 24, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.02).em,
-                        maxLines = 1,
-                    )
-                    Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Search, "Search") { search() } }
-                }
-            }
-            // Compact: no circles, name on the left
-            HeaderSize.COMPACT -> CompositionLocalProvider(LocalHeaderSize provides HeaderSize.COMPACT) {
-                Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CircleBtn(Ic.Menu, "Menu") { vm.menu = true }
-                    Txt(
-                        name, 20, weight = FontWeight.Medium, modifier = Modifier.weight(1f).padding(start = 4.dp),
-                        ls = (-0.02).em, maxLines = 1,
-                    )
-                    CircleBtn(Ic.Search, "Search") { search() }
-                }
-            }
+        // Paperback's header: menu button, the name, search. Compact has no circles and the name sits next to the menu.
+        HeaderStyle.WORDMARK -> Row(Modifier.fillMaxWidth().height(bar), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(s.col.dp), contentAlignment = Alignment.Center) { HdrBtn(Ic.Menu, "Menu", s) { vm.menu = true } }
+            Txt(
+                name, s.word, weight = FontWeight.Medium, modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                ls = (-0.02).em, maxLines = 1,
+                align = if (o.headerSize == HeaderSize.COMPACT) TextAlign.Start else TextAlign.Center,
+            )
+            Box(Modifier.width(s.col.dp), contentAlignment = Alignment.Center) { HdrBtn(Ic.Search, "Search", s) { search() } }
         }
-        HeaderStyle.CIRCLES -> Box(Modifier.fillMaxWidth().height(60.dp)) {
-            Box(Modifier.align(Alignment.CenterStart)) { CircleBtn(Ic.Search, "Search") { search() } }
-            Txt(name, 22, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.02).em)
-            Box(Modifier.align(Alignment.CenterEnd)) { CircleBtn(Ic.Dots, "More") { more() } }
+        HeaderStyle.CIRCLES -> Box(Modifier.fillMaxWidth().height(bar)) {
+            Box(Modifier.align(Alignment.CenterStart)) { HdrBtn(Ic.Search, "Search", s) { search() } }
+            Txt(name, s.word, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.02).em)
+            Box(Modifier.align(Alignment.CenterEnd)) { HdrBtn(Ic.Dots, "Settings", s) { more() } }
         }
-        HeaderStyle.MENU_CENTER -> Box(Modifier.fillMaxWidth().height(60.dp)) {
+        HeaderStyle.MENU_CENTER -> Box(Modifier.fillMaxWidth().height(bar)) {
             Box(Modifier.align(Alignment.CenterStart)) { IconBtn(Ic.Menu, "Menu") { menu() } }
-            Txt(name, 22, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.02).em)
+            Txt(name, s.word, weight = FontWeight.Medium, modifier = Modifier.align(Alignment.Center), ls = (-0.02).em)
             Row(Modifier.align(Alignment.CenterEnd)) {
                 IconBtn(Ic.Search, "Search") { search() }
-                IconBtn(Ic.Dots, "More") { more() }
+                IconBtn(Ic.Dots, "Settings") { more() }
             }
         }
         HeaderStyle.MENU_LEFT -> Row(
-            Modifier.fillMaxWidth().height(60.dp),
+            Modifier.fillMaxWidth().height(bar),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconBtn(Ic.Menu, "Menu") { menu() }
-            Txt(name, 22, weight = FontWeight.Medium, modifier = Modifier.weight(1f).padding(start = 4.dp), ls = (-0.02).em)
+            Txt(name, s.word, weight = FontWeight.Medium, modifier = Modifier.weight(1f).padding(start = 4.dp), ls = (-0.02).em)
             IconBtn(Ic.Search, "Search") { search() }
-            IconBtn(Ic.Dots, "More") { more() }
+            IconBtn(Ic.Dots, "Settings") { more() }
         }
     }
 }
@@ -126,7 +155,7 @@ fun AppHeader(vm: BinderViewModel) {
 @Composable
 fun TopTabs(vm: BinderViewModel, cur: Route) {
     if (vm.opts.nav != NavStyle.TABS) return
-    val tabs = listOf<Pair<Route, String>>(Route.Home to vm.opts.lists, Route.Search to "Search", Route.More to "More")
+    val tabs = listOf<Pair<Route, String>>(Route.Home to vm.opts.lists, Route.Search to "Search", Route.More to "Settings")
     Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
         tabs.forEach { (r, label) ->
             val on = r == cur
@@ -149,7 +178,7 @@ private class Tab(val route: Route, val icon: ImageVector, val label: String)
 private val TABS = listOf(
     Tab(Route.Home, Ic.List, "Lists"),
     Tab(Route.Search, Ic.Search, "Search"),
-    Tab(Route.More, Ic.Dots, "More"),
+    Tab(Route.More, Ic.Dots, "Settings"),
 )
 
 /** mode: 0 = icons only, 1 = label on the selected one, 2 = every label */
@@ -270,7 +299,7 @@ fun BoxScope.NavBar(vm: BinderViewModel, cur: Route) {
                     Txt("Search ${vm.opts.appLabel.lowercase()}…", 14, P.mute, maxLines = 1)
                 }
                 IconBtn(Ic.List, vm.opts.lists) { vm.nav.root(Route.Home) }
-                IconBtn(Ic.Dots, "More") { vm.nav.root(Route.More) }
+                IconBtn(Ic.Dots, "Settings") { vm.nav.root(Route.More) }
             }
             RoundPlus(52.dp) { newList() }
         }
@@ -334,7 +363,7 @@ fun BoxScope.Drawer(vm: BinderViewModel, cur: Route) {
             DrawerItem(Ic.List, vm.opts.lists, cur == Route.Home) { vm.drawer = false; vm.nav.root(Route.Home) }
             DrawerItem(Ic.Search, "Search", cur == Route.Search) { vm.drawer = false; vm.nav.root(Route.Search) }
             DrawerItem(Ic.Plus, "New ${vm.opts.listLower}", false) { vm.drawer = false; vm.nav.push(Route.NewList) }
-            DrawerItem(Ic.Dots, "More", cur == Route.More) { vm.drawer = false; vm.nav.root(Route.More) }
+            DrawerItem(Ic.Dots, "Settings", cur == Route.More) { vm.drawer = false; vm.nav.root(Route.More) }
         }
     }
 }

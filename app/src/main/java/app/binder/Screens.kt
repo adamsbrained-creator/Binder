@@ -178,10 +178,9 @@ fun HomeScreen(vm: BinderViewModel) {
 
 @Composable
 private fun HomeTitle(title: String, count: Int, note: String? = null) {
-    Row(verticalAlignment = Alignment.Bottom) {
-        Txt(title, 34, font = TitleFont)
-        Txt(note ?: "$count", 14, P.mute, Modifier.padding(start = 8.dp, bottom = 6.dp))
-    }
+    // Compact keeps only the header and the list; Regular and Large show the small page title under the menu button
+    if (LocalOpts.current.headerSize == HeaderSize.COMPACT) return
+    PageLabel(title, note ?: "$count")
 }
 
 @Composable
@@ -837,7 +836,7 @@ fun BoxScope.HomeViewSheet(vm: BinderViewModel) {
             Cap("HEADER")
             FlowChips(HeaderStyle.entries.map { it.label }, o.header.ordinal) { i -> vm.change { it.copy(header = HeaderStyle.entries[i]) } }
             Cap("HEADER SIZE")
-            Seg(HeaderSize.entries.map { it.label }, o.headerSize.ordinal) { i -> vm.change { it.copy(headerSize = HeaderSize.entries[i]) } }
+            FlowChips(HeaderSize.entries.map { it.label }, o.headerSize.ordinal) { i -> vm.change { it.copy(headerSize = HeaderSize.entries[i]) } }
             Txt(
                 "Your ${o.listsLower} keep the order you drag them into. The filter only changes what is shown.",
                 12, P.mute, Modifier.padding(top = 14.dp, bottom = 12.dp),
@@ -920,7 +919,7 @@ fun ListScreen(vm: BinderViewModel, id: String) {
                     }
                 },
             )
-            Progress(l.progress(), Modifier.padding(top = 6.dp, bottom = 2.dp))
+            if (o.listProgress) Progress(l.progress(), Modifier.padding(top = 6.dp, bottom = 2.dp))
             Chips(listOf("All") + l.kind.stages, stage + 1) { stage = it - 1 }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ItemsBody(vm, l, layout, shown, handles, if (addBar) 24 else 100, addBar, { addDefault() }, open, hold)
