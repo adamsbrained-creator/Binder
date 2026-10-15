@@ -1,0 +1,171 @@
+# Build the app from a ZIP, so you never have to upload lots of files from a phone.
+#
+# What the repository needs: this file (.github/workflows/binder-zip.yml) and your project as ONE .zip
+# at the top of the repo (not inside a folder). Upload a new zip and the build starts by itself.
+# The zip can have the project folder inside it (B10/...) or the files directly; either works.
+#
+# If there is more than one zip, the one uploaded most recently is built. Or press "Run workflow" and
+# type the name of the zip you want (handy to go back to an older one).
+#
+# The APK is signed with YOUR key, exactly like "Binder (signed)", so it installs over the old one and keeps
+# your lists. First time only: run "Create signing key" and add the 4 secrets it tells you about.
+# Result: Actions > the run > Artifacts > binder-apk (a zip with Binder.apk in it).
+name: Binder (from zip)
+
+on:
+  push:
+    branches: [main, master]
+    paths: ["*.zip"]
+  workflow_dispatch:
+    inputs:
+      zip:
+        description: "Name of the zip to build (empty = the one uploaded most recently)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Two uploads in a row: only the last one is built.
+concurrency:
+  group: binder-zip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # signing (from "Create signing key")
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      # sources that need a key (optional; a missing one is just hidden in the app)
+      TMDB_KEY: ${{ secrets.TMDB_KEY }}
+      RAWG_KEY: ${{ secrets.RAWG_KEY }}
+    steps:
+      # full history, only so we can tell which zip was uploaded last
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the signing secrets
+        run: |
+          missing=""
+          for n in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!n}" ]; then missing="$missing $n"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Run the 'Create signing key' workflow once, then add the secrets it lists (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Pick the zip
+        env:
+          INPUT_ZIP: ${{ inputs.zip }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ -n "${INPUT_ZIP:-}" ]; then
+            best="$INPUT_ZIP"
+            if [ ! -f "$best" ]; then
+              echo "::error::There is no file called '$best' at the top of the repository. Zips found: ${zips[*]:-none}"
+              exit 1
+            fi
+          else
+            if [ ${#zips[@]} -eq 0 ]; then
+              echo "::error::No .zip file at the top of the repository. Upload your project zip there (not inside a folder)."
+              exit 1
+            fi
+            best=""
+            best_t=-1
+            for z in "${zips[@]}"; do
+              t=$(git log -1 --format=%ct -- "$z" 2>/dev/null || true)
+              t=${t:-0}
+              if [ "$t" -gt "$best_t" ]; then best="$z"; best_t=$t; fi
+            done
+          fi
+          echo "ZIP=$best" >> "$GITHUB_ENV"
+          echo "Building from: $best (zips at the top: ${zips[*]:-none})"
+
+      - name: Unpack the zip and find the project
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/src"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          # exit code 1 is only a warning (a zip made on Windows, for example); anything higher is a real failure
+          unzip -q -o "$ZIP" -d "$dir" || [ $? -eq 1 ]
+          f=$(find "$dir" -maxdepth 4 -name 'settings.gradle*' -not -path '*/__MACOSX/*' \
+                | awk -F/ '{print NF" "$0}' | sort -n | sed -n '1p' | cut -d' ' -f2-)
+          if [ -z "$f" ]; then
+            echo "::error::No settings.gradle.kts found inside $ZIP. This is what is in it:"
+            unzip -l "$ZIP" | head -60
+            exit 1
+          fi
+          echo "PROJ=$(dirname "$f")" >> "$GITHUB_ENV"
+          echo "Project folder: $(dirname "$f")"
+          echo "Kotlin files: $(find "$(dirname "$f")" -name '*.kt' | wc -l)"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore the signing key
+        run: |
+          echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/binder.jks"
+          keytool -list -keystore "$RUNNER_TEMP/binder.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null \
+            || { echo "::error::The key could not be opened. Check that the 4 secrets were copied exactly."; exit 1; }
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/binder.jks" >> "$GITHUB_ENV"
+
+      # Android only accepts an APK whose version code is higher than the installed one. This workflow has its
+      # own run counter (it starts at 1), so the run number would be lower than your older builds. Minutes since
+      # 1970 is always higher than the last build, whichever workflow made it.
+      - name: Version code
+        run: echo "VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build signed APK
+        working-directory: ${{ env.PROJ }}
+        run: gradle assembleRelease --stacktrace
+
+      # Shows the key's fingerprint. If this line is the same on every build, updates will install.
+      - name: Check the signature
+        run: |
+          apk=$(ls "$PROJ"/app/build/outputs/apk/release/*.apk | head -n1)
+          tool=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)apksigner
+          "$tool" verify --print-certs "$apk" | tee "$RUNNER_TEMP/cert.txt"
+          grep -q "SHA-256" "$RUNNER_TEMP/cert.txt"
+          mkdir -p dist
+          cp "$apk" dist/Binder.apk
+          {
+            echo "### Built from \`$ZIP\` (version code $VERSION_CODE)"
+            grep "SHA-256" "$RUNNER_TEMP/cert.txt" | head -n1
+            echo
+            echo "Same fingerprint as the last build means it installs over the old one."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binder-apk
+          path: dist/Binder.apk
+          if-no-files-found: error
+
+      # After the APK is saved, so a failing test never costs you the build.
+      - name: Run unit tests
+        working-directory: ${{ env.PROJ }}
+        run: gradle testDebugUnitTest --stacktrace
+
+      - name: Upload error reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: ${{ env.PROJ }}/app/build/reports
+          if-no-files-found: ignore
